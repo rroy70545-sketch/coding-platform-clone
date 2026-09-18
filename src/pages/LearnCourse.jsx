@@ -1,1223 +1,1280 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Award,
-  BookOpen,
-  CheckCircle2,
-  Circle,
-  Clock3,
-  Download,
-  PartyPopper,
-  PlayCircle,
-  RotateCcw,
-} from "lucide-react";
-import jsPDF from "jspdf";
+import { useNavigate, useParams } from "react-router-dom";
+import { jsPDF } from "jspdf";
 
-import courses from "../data/courses";
+const API_URL = "http://localhost:5000";
 
 function LearnCourse() {
   const { id } = useParams();
+  const navigate = useNavigate();
 
-  // ======================================================
-  // COURSE ID
-  // ======================================================
+  const [course, setCourse] = useState(null);
+  const [lessons, setLessons] = useState([]);
+  const [currentLesson, setCurrentLesson] = useState(0);
+  const [progress, setProgress] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const backendCourseId = Number(id);
+  const [currentUser, setCurrentUser] = useState(null);
 
-  // Find course using numeric course ID
-  const course = courses.find(
-    (item) => Number(item.id) === backendCourseId
-  );
-
-  // Progress is stored using the numeric course ID
-  const storageKey = `course-progress-${backendCourseId}`;
-
-  // ======================================================
-  // CURRENT USER
-  // ======================================================
-
-  const getCurrentUser = () => {
+  // ============================================
+  // GET CURRENT USER
+  // ============================================
+  useEffect(() => {
     const userData = localStorage.getItem("codeninja-user");
 
-    if (!userData) {
-      return null;
+    if (userData) {
+      try {
+        const parsedUser = JSON.parse(userData);
+        setCurrentUser(parsedUser);
+      } catch (error) {
+        console.error("Error reading user:", error);
+        setCurrentUser(null);
+      }
     }
+  }, []);
 
-    try {
-      return JSON.parse(userData);
-    } catch {
-      return null;
-    }
+  // ============================================
+  // LOAD COURSE
+  // ============================================
+  useEffect(() => {
+    const loadCourse = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const response = await fetch(`${API_URL}/api/courses/${id}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || "Failed to load course");
+        }
+
+        setCourse(data.course);
+
+        // ----------------------------------------
+        // Course lessons
+        // ----------------------------------------
+        const courseLessons = getLessonsForCourse(
+          Number(id),
+          data.course
+        );
+
+        setLessons(courseLessons);
+
+        setLoading(false);
+      } catch (error) {
+        console.error("Course loading error:", error);
+        setError("Unable to load this course.");
+        setLoading(false);
+      }
+    };
+
+    loadCourse();
+  }, [id]);
+
+  // ============================================
+  // LOAD USER PROGRESS
+  // ============================================
+  useEffect(() => {
+    if (!currentUser || !id) return;
+
+    const loadProgress = async () => {
+      const backendCourseId = Number(id);
+
+      const storageKey = `course-progress-${currentUser.id}-${backendCourseId}`;
+
+      try {
+        // First load local progress
+        const savedProgress = localStorage.getItem(storageKey);
+
+        if (savedProgress) {
+          try {
+            const parsedProgress = JSON.parse(savedProgress);
+
+            if (Array.isArray(parsedProgress)) {
+              setProgress(parsedProgress);
+            }
+          } catch (error) {
+            console.error("Local progress error:", error);
+          }
+        }
+
+        // Then load backend progress
+        const response = await fetch(
+          `${API_URL}/api/progress/${currentUser.id}/${backendCourseId}`
+        );
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          let backendProgress = [];
+
+          if (Array.isArray(data.completedLessons)) {
+            backendProgress = data.completedLessons;
+          } else if (
+            data.progress &&
+            Array.isArray(data.progress.completed_lessons)
+          ) {
+            backendProgress = data.progress.completed_lessons;
+          } else if (
+            data.progress &&
+            typeof data.progress.completed_lessons === "string"
+          ) {
+            try {
+              backendProgress = JSON.parse(
+                data.progress.completed_lessons
+              );
+            } catch {
+              backendProgress = [];
+            }
+          }
+
+          if (Array.isArray(backendProgress)) {
+            setProgress(backendProgress);
+
+            localStorage.setItem(
+              storageKey,
+              JSON.stringify(backendProgress)
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Progress loading error:", error);
+      }
+    };
+
+    loadProgress();
+  }, [currentUser, id]);
+
+  // ============================================
+  // GET LESSONS
+  // ============================================
+  const getLessonsForCourse = (courseId, courseData) => {
+    const lessonData = {
+      1: [
+        {
+          id: 1,
+          title: "Introduction to Data Structures",
+          content:
+            "Learn the fundamentals of data structures and why they are important in computer science.",
+        },
+        {
+          id: 2,
+          title: "Arrays and Strings",
+          content:
+            "Understand arrays, strings, indexing, traversal and common operations.",
+        },
+        {
+          id: 3,
+          title: "Linked Lists",
+          content:
+            "Learn singly linked lists, doubly linked lists and their common operations.",
+        },
+        {
+          id: 4,
+          title: "Stacks and Queues",
+          content:
+            "Understand stacks, queues, LIFO and FIFO concepts with practical examples.",
+        },
+        {
+          id: 5,
+          title: "Trees and Binary Trees",
+          content:
+            "Learn tree structures, binary trees and tree traversal techniques.",
+        },
+        {
+          id: 6,
+          title: "Graphs",
+          content:
+            "Understand graph terminology, representations and graph traversal.",
+        },
+        {
+          id: 7,
+          title: "Searching Algorithms",
+          content:
+            "Learn linear search and binary search algorithms.",
+        },
+        {
+          id: 8,
+          title: "Sorting Algorithms",
+          content:
+            "Study bubble sort, selection sort, insertion sort and other sorting techniques.",
+        },
+        {
+          id: 9,
+          title: "Algorithm Complexity",
+          content:
+            "Understand time complexity, space complexity and Big O notation.",
+        },
+        {
+          id: 10,
+          title: "Final DSA Practice",
+          content:
+            "Review important DSA concepts and prepare for the final quiz.",
+        },
+      ],
+
+      2: [
+        {
+          id: 1,
+          title: "Introduction to Web Development",
+          content:
+            "Understand how modern websites and web applications work.",
+        },
+        {
+          id: 2,
+          title: "HTML Fundamentals",
+          content:
+            "Learn HTML elements, headings, forms, links, images and page structure.",
+        },
+        {
+          id: 3,
+          title: "CSS Fundamentals",
+          content:
+            "Learn selectors, layouts, colors, spacing and responsive design.",
+        },
+        {
+          id: 4,
+          title: "JavaScript Basics",
+          content:
+            "Understand variables, functions, conditions, loops and JavaScript fundamentals.",
+        },
+        {
+          id: 5,
+          title: "DOM Manipulation",
+          content:
+            "Learn how JavaScript interacts with HTML through the DOM.",
+        },
+        {
+          id: 6,
+          title: "React Fundamentals",
+          content:
+            "Understand components, props, state and React application structure.",
+        },
+        {
+          id: 7,
+          title: "Backend Development",
+          content:
+            "Learn the basics of servers, APIs and backend applications.",
+        },
+        {
+          id: 8,
+          title: "REST APIs",
+          content:
+            "Understand GET, POST, PUT and DELETE requests.",
+        },
+        {
+          id: 9,
+          title: "Databases",
+          content:
+            "Learn how web applications store and retrieve data.",
+        },
+        {
+          id: 10,
+          title: "Full Stack Project",
+          content:
+            "Review the complete full-stack development workflow.",
+        },
+      ],
+
+      3: [
+        {
+          id: 1,
+          title: "Introduction to Artificial Intelligence",
+          content:
+            "Understand what artificial intelligence is and how AI systems are used.",
+        },
+        {
+          id: 2,
+          title: "Types of AI",
+          content:
+            "Learn about narrow AI, general AI and other AI classifications.",
+        },
+        {
+          id: 3,
+          title: "Machine Learning",
+          content:
+            "Understand the basic concepts of machine learning.",
+        },
+        {
+          id: 4,
+          title: "Supervised Learning",
+          content:
+            "Learn how supervised learning uses labelled training data.",
+        },
+        {
+          id: 5,
+          title: "Unsupervised Learning",
+          content:
+            "Understand clustering and other unsupervised learning techniques.",
+        },
+        {
+          id: 6,
+          title: "Reinforcement Learning",
+          content:
+            "Learn how agents learn through rewards and penalties.",
+        },
+        {
+          id: 7,
+          title: "Deep Learning",
+          content:
+            "Understand neural networks and deep learning concepts.",
+        },
+        {
+          id: 8,
+          title: "Natural Language Processing",
+          content:
+            "Learn how AI systems process and understand human language.",
+        },
+        {
+          id: 9,
+          title: "Generative AI",
+          content:
+            "Understand how generative AI can create text, images and other content.",
+        },
+        {
+          id: 10,
+          title: "Prompt Engineering",
+          content:
+            "Learn how to write effective prompts for AI systems.",
+        },
+      ],
+
+      4: [
+        {
+          id: 1,
+          title: "Introduction to Databases",
+          content:
+            "Understand databases and why applications use them.",
+        },
+        {
+          id: 2,
+          title: "Database Models",
+          content:
+            "Learn relational and non-relational database concepts.",
+        },
+        {
+          id: 3,
+          title: "SQL Fundamentals",
+          content:
+            "Learn SELECT, INSERT, UPDATE and DELETE operations.",
+        },
+        {
+          id: 4,
+          title: "Tables and Relationships",
+          content:
+            "Understand tables, primary keys and relationships.",
+        },
+        {
+          id: 5,
+          title: "Joins",
+          content:
+            "Learn INNER JOIN, LEFT JOIN and other SQL joins.",
+        },
+        {
+          id: 6,
+          title: "Normalization",
+          content:
+            "Understand database normalization and its benefits.",
+        },
+        {
+          id: 7,
+          title: "Indexes",
+          content:
+            "Learn how indexes improve database query performance.",
+        },
+        {
+          id: 8,
+          title: "Transactions",
+          content:
+            "Understand transactions and ACID properties.",
+        },
+        {
+          id: 9,
+          title: "Database Security",
+          content:
+            "Learn basic database security practices.",
+        },
+        {
+          id: 10,
+          title: "Database Project",
+          content:
+            "Review the major database concepts learned throughout the course.",
+        },
+      ],
+
+      5: [
+        {
+          id: 1,
+          title: "Introduction to Android Development",
+          content:
+            "Understand Android applications and the Android development ecosystem.",
+        },
+        {
+          id: 2,
+          title: "Android Studio",
+          content:
+            "Learn the basics of Android Studio and project setup.",
+        },
+        {
+          id: 3,
+          title: "Activities and Lifecycle",
+          content:
+            "Understand Android activities and their lifecycle.",
+        },
+        {
+          id: 4,
+          title: "Layouts and Views",
+          content:
+            "Learn how Android user interfaces are designed.",
+        },
+        {
+          id: 5,
+          title: "User Input",
+          content:
+            "Learn how applications handle user input.",
+        },
+        {
+          id: 6,
+          title: "Navigation",
+          content:
+            "Understand navigation between Android screens.",
+        },
+        {
+          id: 7,
+          title: "Data Storage",
+          content:
+            "Learn basic techniques for storing application data.",
+        },
+        {
+          id: 8,
+          title: "APIs",
+          content:
+            "Understand how Android applications communicate with APIs.",
+        },
+        {
+          id: 9,
+          title: "Testing Android Apps",
+          content:
+            "Learn basic Android application testing.",
+        },
+        {
+          id: 10,
+          title: "Android Project",
+          content:
+            "Review the complete Android application development process.",
+        },
+      ],
+
+      6: [
+        {
+          id: 1,
+          title: "Introduction to Cybersecurity",
+          content:
+            "Understand cybersecurity and the importance of protecting digital systems.",
+        },
+        {
+          id: 2,
+          title: "CIA Triad",
+          content:
+            "Learn confidentiality, integrity and availability.",
+        },
+        {
+          id: 3,
+          title: "Common Cyber Attacks",
+          content:
+            "Understand phishing, malware, denial-of-service and other common attacks.",
+        },
+        {
+          id: 4,
+          title: "Authentication",
+          content:
+            "Learn passwords, authentication and access control.",
+        },
+        {
+          id: 5,
+          title: "Encryption",
+          content:
+            "Understand encryption and its role in protecting information.",
+        },
+        {
+          id: 6,
+          title: "Network Security",
+          content:
+            "Learn basic concepts of firewalls, secure networks and monitoring.",
+        },
+        {
+          id: 7,
+          title: "Web Security",
+          content:
+            "Understand common web application security risks.",
+        },
+        {
+          id: 8,
+          title: "Social Engineering",
+          content:
+            "Learn how attackers manipulate users into revealing information.",
+        },
+        {
+          id: 9,
+          title: "Cybersecurity Best Practices",
+          content:
+            "Learn practical methods for improving security.",
+        },
+        {
+          id: 10,
+          title: "Security Review",
+          content:
+            "Review the key cybersecurity concepts from the course.",
+        },
+      ],
+
+      7: [
+        {
+          id: 1,
+          title: "Introduction to Data Analytics",
+          content:
+            "Understand data analytics and how organizations use data.",
+        },
+        {
+          id: 2,
+          title: "Types of Data",
+          content:
+            "Learn structured, unstructured and semi-structured data.",
+        },
+        {
+          id: 3,
+          title: "Data Collection",
+          content:
+            "Understand common methods of collecting data.",
+        },
+        {
+          id: 4,
+          title: "Data Cleaning",
+          content:
+            "Learn how to identify and handle missing and incorrect data.",
+        },
+        {
+          id: 5,
+          title: "Exploratory Data Analysis",
+          content:
+            "Understand how analysts explore datasets.",
+        },
+        {
+          id: 6,
+          title: "Statistics",
+          content:
+            "Learn basic statistical concepts used in data analysis.",
+        },
+        {
+          id: 7,
+          title: "Data Visualization",
+          content:
+            "Understand charts and visualizations used to communicate data.",
+        },
+        {
+          id: 8,
+          title: "Python for Analytics",
+          content:
+            "Learn how Python can be used for data analysis.",
+        },
+        {
+          id: 9,
+          title: "Data Interpretation",
+          content:
+            "Learn how to interpret analytical results.",
+        },
+        {
+          id: 10,
+          title: "Analytics Project",
+          content:
+            "Review the complete data analytics workflow.",
+        },
+      ],
+
+      8: [
+        {
+          id: 1,
+          title: "Introduction to Backend Development",
+          content:
+            "Understand servers, backend applications and APIs.",
+        },
+        {
+          id: 2,
+          title: "Node.js Fundamentals",
+          content:
+            "Learn the basics of Node.js.",
+        },
+        {
+          id: 3,
+          title: "Express.js",
+          content:
+            "Understand Express.js and backend routing.",
+        },
+        {
+          id: 4,
+          title: "REST APIs",
+          content:
+            "Learn how to build and consume REST APIs.",
+        },
+        {
+          id: 5,
+          title: "Middleware",
+          content:
+            "Understand middleware in backend applications.",
+        },
+        {
+          id: 6,
+          title: "Databases",
+          content:
+            "Learn how backend applications interact with databases.",
+        },
+        {
+          id: 7,
+          title: "Authentication",
+          content:
+            "Understand login, authentication and authorization.",
+        },
+        {
+          id: 8,
+          title: "Error Handling",
+          content:
+            "Learn how backend applications handle errors.",
+        },
+        {
+          id: 9,
+          title: "API Security",
+          content:
+            "Learn basic practices for securing backend APIs.",
+        },
+        {
+          id: 10,
+          title: "Backend Project",
+          content:
+            "Review the complete backend development workflow.",
+        },
+      ],
+    };
+
+    return (
+      lessonData[courseId] || [
+        {
+          id: 1,
+          title: "Introduction",
+          content:
+            courseData?.title
+              ? `Welcome to ${courseData.title}.`
+              : "Welcome to the course.",
+        },
+        {
+          id: 2,
+          title: "Core Concepts",
+          content:
+            "Learn the important concepts covered in this course.",
+        },
+        {
+          id: 3,
+          title: "Practical Applications",
+          content:
+            "Explore practical applications of the concepts.",
+        },
+        {
+          id: 4,
+          title: "Final Review",
+          content:
+            "Review the important concepts before completing the course.",
+        },
+      ]
+    );
   };
 
-  // ======================================================
-  // LOCAL PROGRESS
-  // ======================================================
+  // ============================================
+  // MARK LESSON COMPLETE
+  // ============================================
+  const markLessonComplete = async () => {
+    if (!currentUser || !lessons[currentLesson]) return;
 
-  const getSavedProgress = () => {
-    const savedProgress = localStorage.getItem(storageKey);
+    const lessonId = lessons[currentLesson].id;
 
-    if (!savedProgress) {
-      return [];
+    let updatedProgress = [...progress];
+
+    if (!updatedProgress.includes(lessonId)) {
+      updatedProgress.push(lessonId);
     }
 
-    try {
-      const parsedProgress = JSON.parse(savedProgress);
+    setProgress(updatedProgress);
 
-      return Array.isArray(parsedProgress) ? parsedProgress : [];
-    } catch {
-      return [];
-    }
-  };
+    const backendCourseId = Number(id);
 
-  // ======================================================
-  // INITIAL LESSON
-  // ======================================================
+    const storageKey = `course-progress-${currentUser.id}-${backendCourseId}`;
 
-  const getInitialLesson = () => {
-    if (!course) {
-      return 0;
-    }
-
-    const savedProgress = getSavedProgress();
-
-    const firstUnfinishedLesson = course.curriculum.findIndex(
-      (_, index) => !savedProgress.includes(index)
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(updatedProgress)
     );
 
-    if (firstUnfinishedLesson !== -1) {
-      return firstUnfinishedLesson;
-    }
-
-    return course.curriculum.length - 1;
-  };
-
-  const [currentLesson, setCurrentLesson] = useState(
-    getInitialLesson
-  );
-
-  const [completedLessons, setCompletedLessons] = useState(
-    getSavedProgress
-  );
-
-  const [savingProgress, setSavingProgress] = useState(false);
-
-  const [loadingProgress, setLoadingProgress] = useState(true);
-
-  // ======================================================
-  // SAVE PROGRESS TO BACKEND
-  // ======================================================
-
-  const saveProgressToBackend = async (progress) => {
-    const user = getCurrentUser();
-
-    if (!user || !user.id) {
-      console.log(
-        "No logged-in user. Progress saved locally only."
-      );
-      return;
-    }
-
-    if (
-      !backendCourseId ||
-      Number.isNaN(backendCourseId)
-    ) {
-      console.error("Invalid course ID:", id);
-      return;
-    }
-
+    // Save progress to backend
     try {
-      setSavingProgress(true);
-
-      const response = await fetch(
-        `http://localhost:5000/api/progress/${user.id}/${backendCourseId}`,
+      await fetch(
+        `${API_URL}/api/progress/${currentUser.id}/${backendCourseId}`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            completedLessons: progress,
+            completedLessons: updatedProgress,
           }),
         }
       );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error(
-          "Progress save failed:",
-          data.message
-        );
-        return;
-      }
-
-      console.log(
-        "Progress saved to backend:",
-        data
-      );
     } catch (error) {
-      console.error(
-        "Backend progress error:",
-        error
-      );
-    } finally {
-      setSavingProgress(false);
+      console.error("Error saving progress:", error);
+    }
+
+    // Move to next lesson
+    if (currentLesson < lessons.length - 1) {
+      setCurrentLesson(currentLesson + 1);
     }
   };
 
-  // ======================================================
-  // LOAD PROGRESS FROM BACKEND
-  // ======================================================
+  // ============================================
+  // GO TO LESSON
+  // ============================================
+  const goToLesson = (index) => {
+    setCurrentLesson(index);
+  };
 
-  useEffect(() => {
-    const loadBackendProgress = async () => {
-      const user = getCurrentUser();
-
-      if (
-        !user ||
-        !user.id ||
-        !course ||
-        !backendCourseId ||
-        Number.isNaN(backendCourseId)
-      ) {
-        setLoadingProgress(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(
-          `http://localhost:5000/api/progress/${user.id}/${backendCourseId}`
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          console.error(
-            "Unable to load backend progress:",
-            data.message
-          );
-
-          setLoadingProgress(false);
-          return;
-        }
-
-        if (Array.isArray(data.completedLessons)) {
-          const backendProgress = data.completedLessons;
-
-          // Update React state
-          setCompletedLessons(backendProgress);
-
-          // Synchronize local storage
-          localStorage.setItem(
-            storageKey,
-            JSON.stringify(backendProgress)
-          );
-
-          // Open first unfinished lesson
-          const firstUnfinishedLesson =
-            course.curriculum.findIndex(
-              (_, index) =>
-                !backendProgress.includes(index)
-            );
-
-          if (firstUnfinishedLesson !== -1) {
-            setCurrentLesson(firstUnfinishedLesson);
-          } else if (course.curriculum.length > 0) {
-            setCurrentLesson(
-              course.curriculum.length - 1
-            );
-          }
-        }
-      } catch (error) {
-        console.error(
-          "Backend progress loading error:",
-          error
-        );
-      } finally {
-        setLoadingProgress(false);
-      }
-    };
-
-    loadBackendProgress();
-  }, [course, backendCourseId, storageKey]);
-
-  // ======================================================
-  // SAVE TO LOCAL STORAGE
-  // ======================================================
-
-  useEffect(() => {
-    localStorage.setItem(
-      storageKey,
-      JSON.stringify(completedLessons)
-    );
-  }, [completedLessons, storageKey]);
-
-  // ======================================================
-  // COURSE NOT FOUND
-  // ======================================================
-
-  if (!course) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-slate-900">
-            Course Not Found
-          </h1>
-
-          <p className="mt-3 text-slate-500">
-            The course you are looking for does not exist.
-          </p>
-
-          <Link
-            to="/courses"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
-          >
-            <ArrowLeft size={18} />
-            Back to Courses
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // ======================================================
-  // LOADING PROGRESS
-  // ======================================================
-
-  if (loadingProgress) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
-
-          <p className="mt-4 text-sm font-medium text-slate-600">
-            Loading your progress...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ======================================================
-  // PROGRESS CALCULATION
-  // ======================================================
-
-  const totalLessons = course.curriculum.length;
-
-  const progress =
-    totalLessons > 0
-      ? Math.round(
-          (completedLessons.length / totalLessons) * 100
-        )
+  // ============================================
+  // CALCULATE PROGRESS
+  // ============================================
+  const progressPercentage =
+    lessons.length > 0
+      ? Math.round((progress.length / lessons.length) * 100)
       : 0;
 
-  const courseCompleted =
-    totalLessons > 0 &&
-    completedLessons.length === totalLessons;
+  const isCourseComplete =
+    lessons.length > 0 &&
+    progress.length >= lessons.length;
 
-  const lesson = course.curriculum[currentLesson];
-
-  // ======================================================
-  // MARK LESSON COMPLETE
-  // ======================================================
-
-  const markComplete = () => {
-    if (completedLessons.includes(currentLesson)) {
+  // ============================================
+  // DOWNLOAD CERTIFICATE
+  // ============================================
+  const downloadCertificate = () => {
+    if (!currentUser) {
+      alert("Please login before downloading your certificate.");
+      navigate("/login");
       return;
     }
 
-    const updatedProgress = [
-      ...completedLessons,
-      currentLesson,
-    ].sort((a, b) => a - b);
-
-    setCompletedLessons(updatedProgress);
-
-    saveProgressToBackend(updatedProgress);
-  };
-
-  // ======================================================
-  // NEXT LESSON
-  // ======================================================
-
-  const nextLesson = () => {
-    if (currentLesson < totalLessons - 1) {
-      setCurrentLesson(currentLesson + 1);
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+    if (!isCourseComplete) {
+      alert(
+        "Please complete all lessons before downloading your certificate."
+      );
+      return;
     }
-  };
 
-  // ======================================================
-  // PREVIOUS LESSON
-  // ======================================================
+    try {
+      const userData = localStorage.getItem("codeninja-user");
 
-  const previousLesson = () => {
-    if (currentLesson > 0) {
-      setCurrentLesson(currentLesson - 1);
+      let userName = "CodeNinja Student";
 
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
-    }
-  };
+      if (userData) {
+        try {
+          const parsedUser = JSON.parse(userData);
 
-  // ======================================================
-  // RESTART COURSE
-  // ======================================================
-
-  const restartCourse = () => {
-    setCompletedLessons([]);
-    setCurrentLesson(0);
-
-    localStorage.setItem(
-      storageKey,
-      JSON.stringify([])
-    );
-
-    saveProgressToBackend([]);
-  };
-
-  // ======================================================
-  // DOWNLOAD CERTIFICATE
-  // ======================================================
-
-  const downloadCertificate = () => {
-    const userData =
-      localStorage.getItem("codeninja-user");
-
-    let userName = "CodeNinja Student";
-
-    if (userData) {
-      try {
-        const parsedUser = JSON.parse(userData);
-
-        if (parsedUser.name) {
-          userName = parsedUser.name;
+          if (parsedUser.name) {
+            userName = parsedUser.name;
+          }
+        } catch (error) {
+          console.error("User data error:", error);
         }
-      } catch {
-        userName = "CodeNinja Student";
       }
+
+      // ========================================
+      // NEW CERTIFICATE ID FORMAT
+      // CNA-courseId-userId-timestamp
+      // ========================================
+      const certificateId = `CNA-${course.id}-${currentUser.id}-${Date.now()}`;
+
+      const completionDate = new Date().toLocaleDateString(
+        "en-IN",
+        {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        }
+      );
+
+      const doc = new jsPDF("landscape", "mm", "a4");
+
+      // ----------------------------------------
+      // Certificate border
+      // ----------------------------------------
+      doc.setLineWidth(2);
+      doc.rect(10, 10, 277, 190);
+
+      doc.setLineWidth(0.5);
+      doc.rect(15, 15, 267, 180);
+
+      // ----------------------------------------
+      // Academy name
+      // ----------------------------------------
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(28);
+
+      doc.text(
+        "CodeNinja Academy",
+        148.5,
+        38,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Certificate title
+      // ----------------------------------------
+      doc.setFontSize(24);
+
+      doc.text(
+        "CERTIFICATE OF COMPLETION",
+        148.5,
+        58,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Presented to
+      // ----------------------------------------
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(14);
+
+      doc.text(
+        "This certificate is proudly presented to",
+        148.5,
+        78,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Student name
+      // ----------------------------------------
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(26);
+
+      doc.text(
+        userName,
+        148.5,
+        95,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Course completion text
+      // ----------------------------------------
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(14);
+
+      doc.text(
+        "for successfully completing the course",
+        148.5,
+        112,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Course title
+      // ----------------------------------------
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+
+      doc.text(
+        course.title,
+        148.5,
+        130,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Completion percentage
+      // ----------------------------------------
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(13);
+
+      doc.text(
+        `Course Completion: ${progressPercentage}%`,
+        148.5,
+        148,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Completion date
+      // ----------------------------------------
+      doc.text(
+        `Completion Date: ${completionDate}`,
+        148.5,
+        158,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Certificate ID
+      // ----------------------------------------
+      doc.setFontSize(10);
+
+      doc.text(
+        `Certificate ID: ${certificateId}`,
+        148.5,
+        174,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Footer
+      // ----------------------------------------
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+
+      doc.text(
+        "CodeNinja Academy",
+        148.5,
+        186,
+        { align: "center" }
+      );
+
+      // ----------------------------------------
+      // Download
+      // ----------------------------------------
+      doc.save(
+        `CodeNinja-Certificate-${course.title.replace(
+          /[^a-z0-9]/gi,
+          "-"
+        )}.pdf`
+      );
+
+      alert(
+        `Certificate downloaded successfully!\n\nCertificate ID:\n${certificateId}`
+      );
+    } catch (error) {
+      console.error("Certificate generation error:", error);
+
+      alert(
+        "Unable to generate the certificate. Please try again."
+      );
     }
-
-    const today = new Date();
-
-    const completionDate =
-      today.toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      });
-
-    const certificateId =
-      `CNA-${course.id}-${Date.now()}`;
-
-    const doc = new jsPDF({
-      orientation: "landscape",
-      unit: "mm",
-      format: "a4",
-    });
-
-    const pageWidth =
-      doc.internal.pageSize.getWidth();
-
-    const pageHeight =
-      doc.internal.pageSize.getHeight();
-
-    // Outer border
-    doc.setLineWidth(1.5);
-
-    doc.rect(
-      10,
-      10,
-      pageWidth - 20,
-      pageHeight - 20
-    );
-
-    // Inner border
-    doc.setLineWidth(0.5);
-
-    doc.rect(
-      14,
-      14,
-      pageWidth - 28,
-      pageHeight - 28
-    );
-
-    // Academy
-    doc.setFont(
-      "helvetica",
-      "bold"
-    );
-
-    doc.setFontSize(26);
-
-    doc.text(
-      "CodeNinja Academy",
-      pageWidth / 2,
-      35,
-      {
-        align: "center",
-      }
-    );
-
-    // Certificate title
-    doc.setFontSize(30);
-
-    doc.text(
-      "CERTIFICATE OF COMPLETION",
-      pageWidth / 2,
-      58,
-      {
-        align: "center",
-      }
-    );
-
-    // Presented text
-    doc.setFont(
-      "helvetica",
-      "normal"
-    );
-
-    doc.setFontSize(14);
-
-    doc.text(
-      "This certificate is proudly presented to",
-      pageWidth / 2,
-      75,
-      {
-        align: "center",
-      }
-    );
-
-    // Student name
-    doc.setFont(
-      "helvetica",
-      "bold"
-    );
-
-    doc.setFontSize(28);
-
-    doc.text(
-      userName,
-      pageWidth / 2,
-      92,
-      {
-        align: "center",
-      }
-    );
-
-    // Course completion text
-    doc.setFont(
-      "helvetica",
-      "normal"
-    );
-
-    doc.setFontSize(14);
-
-    doc.text(
-      "for successfully completing the course",
-      pageWidth / 2,
-      108,
-      {
-        align: "center",
-      }
-    );
-
-    // Course title
-    doc.setFont(
-      "helvetica",
-      "bold"
-    );
-
-    doc.setFontSize(22);
-
-    const courseTitle =
-      course.title.length > 50
-        ? course.title.substring(0, 50) + "..."
-        : course.title;
-
-    doc.text(
-      courseTitle,
-      pageWidth / 2,
-      125,
-      {
-        align: "center",
-      }
-    );
-
-    // Completion information
-    doc.setFont(
-      "helvetica",
-      "normal"
-    );
-
-    doc.setFontSize(13);
-
-    doc.text(
-      "Course Completion: 100%",
-      pageWidth / 2,
-      143,
-      {
-        align: "center",
-      }
-    );
-
-    doc.text(
-      `Completion Date: ${completionDate}`,
-      pageWidth / 2,
-      153,
-      {
-        align: "center",
-      }
-    );
-
-    // Certificate ID
-    doc.setFontSize(10);
-
-    doc.text(
-      `Certificate ID: ${certificateId}`,
-      pageWidth / 2,
-      171,
-      {
-        align: "center",
-      }
-    );
-
-    // Signature lines
-    doc.setLineWidth(0.5);
-
-    doc.line(
-      45,
-      183,
-      95,
-      183
-    );
-
-    doc.line(
-      pageWidth - 95,
-      183,
-      pageWidth - 45,
-      183
-    );
-
-    doc.setFontSize(10);
-
-    doc.text(
-      "CodeNinja Academy",
-      70,
-      190,
-      {
-        align: "center",
-      }
-    );
-
-    doc.text(
-      "Course Completion",
-      pageWidth - 70,
-      190,
-      {
-        align: "center",
-      }
-    );
-
-    doc.setFontSize(9);
-
-    doc.text(
-      "This certificate recognizes successful completion of the course.",
-      pageWidth / 2,
-      196,
-      {
-        align: "center",
-      }
-    );
-
-    doc.save(
-      `CodeNinja-Certificate-${
-        course.shortTitle || course.id
-      }.pdf`
-    );
   };
 
-  // ======================================================
-  // UI
-  // ======================================================
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-
-      {/* HEADER */}
-
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
-
-          <Link
-            to={`/courses/${course.id}`}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600"
-          >
-            <ArrowLeft size={18} />
-            Back to Course
-          </Link>
-
-          <div className="hidden text-center md:block">
-            <h1 className="font-bold text-slate-900">
-              {course.title}
-            </h1>
-
-            <p className="text-xs text-slate-500">
-              {completedLessons.length} of{" "}
-              {totalLessons} lessons completed
-            </p>
+  // ============================================
+  // LOADING
+  // ============================================
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <div className="text-center">
+          <div className="text-2xl font-bold mb-2">
+            Loading course...
           </div>
 
-          <div className="flex items-center gap-2 text-sm font-semibold text-blue-600">
-            <BookOpen size={18} />
-            {progress}%
-          </div>
-
+          <p className="text-slate-400">
+            Please wait.
+          </p>
         </div>
-      </header>
-
-      {/* PROGRESS BAR */}
-
-      <div className="h-2 bg-slate-200">
-        <div
-          className="h-full bg-blue-600 transition-all duration-500"
-          style={{
-            width: `${progress}%`,
-          }}
-        />
       </div>
+    );
+  }
 
-      <div className="mx-auto grid max-w-7xl lg:grid-cols-[320px_1fr]">
+  // ============================================
+  // ERROR
+  // ============================================
+  if (error || !course) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">
+            Course Not Found
+          </h1>
 
-        {/* SIDEBAR */}
+          <p className="text-slate-400 mb-6">
+            {error || "This course could not be found."}
+          </p>
 
-        <aside className="border-b border-slate-200 bg-white lg:min-h-[calc(100vh-74px)] lg:border-b-0 lg:border-r">
+          <button
+            onClick={() => navigate("/courses")}
+            className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 transition"
+          >
+            Back to Courses
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-          <div className="p-6">
+  // ============================================
+  // MAIN UI
+  // ============================================
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      {/* ========================================
+          HEADER
+      ======================================== */}
+      <div className="border-b border-slate-800 bg-slate-900">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <button
+                onClick={() => navigate("/courses")}
+                className="text-slate-400 hover:text-white text-sm mb-2"
+              >
+                ← Back to Courses
+              </button>
 
-            <div className="mb-6">
-              <h2 className="text-lg font-bold text-slate-900">
-                Course Lessons
-              </h2>
+              <h1 className="text-2xl font-bold">
+                {course.title}
+              </h1>
 
-              <p className="mt-1 text-sm text-slate-500">
-                {completedLessons.length}/
-                {totalLessons} completed
+              <p className="text-slate-400 mt-1">
+                {course.category} • {course.level}
               </p>
             </div>
 
-            {/* Progress */}
-
-            <div className="mb-6">
-
-              <div className="mb-2 flex items-center justify-between text-xs">
-
-                <span className="font-medium text-slate-500">
+            <div className="min-w-[220px]">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-slate-400">
                   Course Progress
                 </span>
 
-                <span className="font-bold text-blue-600">
-                  {progress}%
+                <span className="font-semibold">
+                  {progressPercentage}%
                 </span>
-
               </div>
 
-              <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-
+              <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                  className="h-full bg-blue-500 transition-all duration-300"
                   style={{
-                    width: `${progress}%`,
+                    width: `${progressPercentage}%`,
                   }}
                 />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
+      {/* ========================================
+          MAIN CONTENT
+      ======================================== */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* ====================================
+              LESSON SIDEBAR
+          ==================================== */}
+          <aside className="lg:col-span-1">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+              <div className="p-4 border-b border-slate-800">
+                <h2 className="font-bold">
+                  Course Lessons
+                </h2>
+
+                <p className="text-sm text-slate-400 mt-1">
+                  {progress.length} of {lessons.length} completed
+                </p>
               </div>
 
-            </div>
+              <div className="max-h-[600px] overflow-y-auto">
+                {lessons.map((lesson, index) => {
+                  const completed = progress.includes(
+                    lesson.id
+                  );
 
-            {/* Lessons */}
-
-            <div className="space-y-2">
-
-              {course.curriculum.map(
-                (item, index) => {
-
-                  const isCompleted =
-                    completedLessons.includes(index);
-
-                  const isCurrent =
+                  const active =
                     currentLesson === index;
 
                   return (
                     <button
-                      key={index}
-                      onClick={() =>
-                        setCurrentLesson(index)
-                      }
-                      className={`w-full rounded-xl border p-4 text-left transition ${
-                        isCurrent
-                          ? "border-blue-300 bg-blue-50"
-                          : isCompleted
-                            ? "border-green-200 bg-green-50 hover:bg-green-100"
-                            : "border-transparent bg-slate-50 hover:border-slate-200 hover:bg-slate-100"
+                      key={lesson.id}
+                      onClick={() => goToLesson(index)}
+                      className={`w-full text-left p-4 border-b border-slate-800 transition ${
+                        active
+                          ? "bg-blue-600/20 border-l-4 border-l-blue-500"
+                          : "hover:bg-slate-800"
                       }`}
                     >
-
                       <div className="flex items-start gap-3">
-
-                        <div className="mt-0.5 shrink-0">
-
-                          {isCompleted ? (
-                            <CheckCircle2
-                              size={21}
-                              className="text-green-600"
-                            />
-                          ) : isCurrent ? (
-                            <PlayCircle
-                              size={21}
-                              className="text-blue-600"
-                            />
-                          ) : (
-                            <Circle
-                              size={21}
-                              className="text-slate-400"
-                            />
-                          )}
-
+                        <div
+                          className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                            completed
+                              ? "bg-green-500 text-white"
+                              : active
+                              ? "bg-blue-500 text-white"
+                              : "bg-slate-700 text-slate-300"
+                          }`}
+                        >
+                          {completed
+                            ? "✓"
+                            : index + 1}
                         </div>
 
-                        <div className="min-w-0 flex-1">
-
-                          <div className="mb-1 flex items-center justify-between gap-2">
-
-                            <span
-                              className={`text-xs font-semibold ${
-                                isCompleted
-                                  ? "text-green-600"
-                                  : isCurrent
-                                    ? "text-blue-600"
-                                    : "text-slate-400"
-                              }`}
-                            >
-                              LESSON {index + 1}
-                            </span>
-
-                            {isCompleted && (
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-green-600">
-                                Completed
-                              </span>
-                            )}
-
-                            {!isCompleted &&
-                              isCurrent && (
-                                <span className="text-[10px] font-bold uppercase tracking-wide text-blue-600">
-                                  Current
-                                </span>
-                              )}
-
+                        <div>
+                          <div className="font-medium text-sm">
+                            {lesson.title}
                           </div>
 
-                          <p
-                            className={`text-sm font-semibold ${
-                              isCurrent
-                                ? "text-blue-900"
-                                : isCompleted
-                                  ? "text-green-900"
-                                  : "text-slate-700"
-                            }`}
-                          >
-                            {item.title}
-                          </p>
-
-                          {item.duration && (
-                            <div className="mt-2 flex items-center gap-1 text-xs text-slate-400">
-                              <Clock3 size={13} />
-                              {item.duration}
-                            </div>
-                          )}
-
+                          <div className="text-xs text-slate-500 mt-1">
+                            Lesson {index + 1}
+                          </div>
                         </div>
-
                       </div>
-
                     </button>
                   );
-                }
-              )}
-
+                })}
+              </div>
             </div>
+          </aside>
 
-          </div>
+          {/* ====================================
+              LESSON CONTENT
+          ==================================== */}
+          <main className="lg:col-span-3">
+            {lessons.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 md:p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <p className="text-blue-400 text-sm font-semibold">
+                      Lesson {currentLesson + 1} of{" "}
+                      {lessons.length}
+                    </p>
 
-        </aside>
-
-        {/* MAIN */}
-
-        <main className="p-6 md:p-10">
-
-          {courseCompleted ? (
-
-            /* ==================================================
-               COMPLETED COURSE
-            ================================================== */
-
-            <div className="mx-auto max-w-3xl rounded-3xl border border-green-200 bg-white p-8 text-center shadow-sm md:p-12">
-
-              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-green-600">
-                <PartyPopper size={40} />
-              </div>
-
-              <h2 className="text-3xl font-bold text-slate-900">
-                Course Completed! 🎉
-              </h2>
-
-              <p className="mx-auto mt-4 max-w-xl text-slate-500">
-                Congratulations! You have completed all
-                the lessons in this course.
-              </p>
-
-              <div className="mx-auto mt-8 max-w-md rounded-2xl bg-green-50 p-5">
-
-                <div className="text-3xl font-bold text-green-700">
-                  100%
-                </div>
-
-                <p className="mt-1 text-sm text-green-600">
-                  {totalLessons} of {totalLessons} lessons
-                  completed
-                </p>
-
-              </div>
-
-              {/* Certificate */}
-
-              <div className="mx-auto mt-8 max-w-lg rounded-2xl border border-yellow-200 bg-yellow-50 p-6">
-
-                <div className="flex flex-col items-center text-center">
-
-                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100 text-yellow-600">
-                    <Award size={32} />
+                    <h2 className="text-3xl font-bold mt-2">
+                      {lessons[currentLesson].title}
+                    </h2>
                   </div>
 
-                  <h3 className="text-xl font-bold text-slate-900">
-                    Certificate Ready 🏆
-                  </h3>
+                  {progress.includes(
+                    lessons[currentLesson].id
+                  ) && (
+                    <div className="px-3 py-2 rounded-lg bg-green-500/10 text-green-400 text-sm font-semibold">
+                      ✓ Completed
+                    </div>
+                  )}
+                </div>
 
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    You have successfully completed all{" "}
-                    {totalLessons} lessons of this course.
+                <div className="prose prose-invert max-w-none">
+                  <p className="text-slate-300 text-lg leading-8">
+                    {lessons[currentLesson].content}
                   </p>
+                </div>
 
-                  <div className="mt-4 rounded-xl bg-white px-5 py-3">
+                {/* ==================================
+                    LESSON ACTIONS
+                ================================== */}
+                <div className="mt-10 pt-6 border-t border-slate-800">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:justify-between">
+                    <button
+                      onClick={() =>
+                        setCurrentLesson(
+                          Math.max(0, currentLesson - 1)
+                        )
+                      }
+                      disabled={currentLesson === 0}
+                      className="px-5 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                      ← Previous
+                    </button>
 
-                    <p className="text-2xl font-bold text-green-600">
-                      100%
+                    {!progress.includes(
+                      lessons[currentLesson].id
+                    ) ? (
+                      <button
+                        onClick={markLessonComplete}
+                        className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold transition"
+                      >
+                        Mark as Complete
+                      </button>
+                    ) : currentLesson <
+                      lessons.length - 1 ? (
+                      <button
+                        onClick={() =>
+                          setCurrentLesson(
+                            currentLesson + 1
+                          )
+                        }
+                        className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 font-semibold transition"
+                      >
+                        Next Lesson →
+                      </button>
+                    ) : (
+                      <div className="text-green-400 font-semibold flex items-center">
+                        ✓ All lessons completed
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ====================================
+                COURSE COMPLETION
+            ==================================== */}
+            {isCourseComplete && (
+              <div className="mt-6 bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/30 rounded-xl p-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+                  <div>
+                    <div className="text-green-400 font-bold text-xl">
+                      🎉 Course Completed!
+                    </div>
+
+                    <p className="text-slate-300 mt-2">
+                      Congratulations! You have completed
+                      all lessons in this course.
                     </p>
 
-                    <p className="text-xs text-slate-500">
-                      Course Completion
+                    <p className="text-slate-400 text-sm mt-2">
+                      Your completion progress is{" "}
+                      {progressPercentage}%.
                     </p>
-
                   </div>
 
                   <button
                     onClick={downloadCertificate}
-                    className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-bold text-white shadow-sm transition hover:bg-blue-700"
+                    className="px-6 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 font-bold transition whitespace-nowrap"
                   >
-                    <Download size={19} />
                     Download Certificate
                   </button>
-
-                  <p className="mt-3 text-xs text-slate-500">
-                    Your certificate will be downloaded as a PDF.
-                  </p>
-
                 </div>
-
               </div>
+            )}
 
-              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-
-                <button
-                  onClick={restartCourse}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  <RotateCcw size={18} />
-                  Restart Course
-                </button>
-
-                <Link
-                  to={`/courses/${course.id}/quiz`}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800"
-                >
-                  Take Quiz
-                  <ArrowRight size={18} />
-                </Link>
-
-              </div>
-
-            </div>
-
-          ) : (
-
-            /* ==================================================
-               LESSON CONTENT
-            ================================================== */
-
-            <>
-
-              <div className="mb-8">
-
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-
-                  <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
-                    LESSON {currentLesson + 1}
-                  </span>
-
-                  {completedLessons.includes(
-                    currentLesson
-                  ) ? (
-
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                      <CheckCircle2 size={14} />
-                      Completed
-                    </span>
-
-                  ) : (
-
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                      <PlayCircle size={14} />
-                      In Progress
-                    </span>
-
-                  )}
-
-                </div>
-
-                <h2 className="text-3xl font-bold text-slate-900 md:text-4xl">
-                  {lesson.title}
-                </h2>
-
-                {lesson.duration && (
-                  <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
-                    <Clock3 size={17} />
-                    {lesson.duration}
-                  </div>
-                )}
-
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-10">
-
-                {lesson.description && (
-                  <div className="mb-8 rounded-2xl bg-slate-50 p-6">
-
-                    <p className="leading-7 text-slate-600">
-                      {lesson.description}
-                    </p>
-
-                  </div>
-                )}
-
-                {lesson.content && (
+            {/* ====================================
+                QUIZ
+            ==================================== */}
+            {isCourseComplete && (
+              <div className="mt-6 bg-slate-900 border border-slate-800 rounded-xl p-6">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div>
-
-                    {Array.isArray(lesson.content) ? (
-
-                      lesson.content.map(
-                        (paragraph, index) => (
-                          <p
-                            key={index}
-                            className="mb-5 leading-8 text-slate-700"
-                          >
-                            {paragraph}
-                          </p>
-                        )
-                      )
-
-                    ) : (
-
-                      <p className="leading-8 text-slate-700">
-                        {lesson.content}
-                      </p>
-
-                    )}
-
-                  </div>
-                )}
-
-                {lesson.topics && (
-                  <div className="mt-8">
-
-                    <h3 className="mb-4 text-xl font-bold text-slate-900">
-                      Topics Covered
+                    <h3 className="text-xl font-bold">
+                      Ready for the Quiz?
                     </h3>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-
-                      {lesson.topics.map(
-                        (topic, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
-                          >
-
-                            <CheckCircle2
-                              size={18}
-                              className="shrink-0 text-blue-600"
-                            />
-
-                            <span className="text-sm font-medium text-slate-700">
-                              {topic}
-                            </span>
-
-                          </div>
-                        )
-                      )}
-
-                    </div>
-
+                    <p className="text-slate-400 mt-1">
+                      Test your knowledge of this course.
+                    </p>
                   </div>
-                )}
 
-                {lesson.skills && (
-                  <div className="mt-8">
-
-                    <h3 className="mb-4 text-xl font-bold text-slate-900">
-                      What You Will Learn
-                    </h3>
-
-                    <div className="flex flex-wrap gap-2">
-
-                      {lesson.skills.map(
-                        (skill, index) => (
-                          <span
-                            key={index}
-                            className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700"
-                          >
-                            {skill}
-                          </span>
-                        )
-                      )}
-
-                    </div>
-
-                  </div>
-                )}
-
-                {/* COMPLETE BUTTON */}
-
-                <div className="mt-10 border-t border-slate-200 pt-8">
-
-                  {completedLessons.includes(
-                    currentLesson
-                  ) ? (
-
-                    <div className="flex flex-col gap-4 rounded-2xl bg-green-50 p-5 sm:flex-row sm:items-center sm:justify-between">
-
-                      <div className="flex items-center gap-3">
-
-                        <CheckCircle2
-                          size={25}
-                          className="text-green-600"
-                        />
-
-                        <div>
-
-                          <p className="font-bold text-green-800">
-                            Lesson Completed
-                          </p>
-
-                          <p className="text-sm text-green-600">
-                            Progress saved to your account.
-                          </p>
-
-                        </div>
-
-                      </div>
-
-                      {currentLesson <
-                        totalLessons - 1 && (
-                        <button
-                          onClick={nextLesson}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 font-semibold text-white hover:bg-green-700"
-                        >
-                          Next Lesson
-                          <ArrowRight size={18} />
-                        </button>
-                      )}
-
-                    </div>
-
-                  ) : (
-
-                    <button
-                      onClick={markComplete}
-                      disabled={savingProgress}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-4 font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-
-                      <CheckCircle2 size={20} />
-
-                      {savingProgress
-                        ? "Saving Progress..."
-                        : "Mark Lesson as Complete"}
-
-                    </button>
-
-                  )}
-
+                  <button
+                    onClick={() =>
+                      navigate(`/quiz/${course.id}`)
+                    }
+                    className="px-6 py-3 rounded-lg bg-purple-600 hover:bg-purple-700 font-semibold transition"
+                  >
+                    Take Quiz →
+                  </button>
                 </div>
-
               </div>
-
-              {/* NAVIGATION */}
-
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-                <button
-                  onClick={previousLesson}
-                  disabled={currentLesson === 0}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ArrowLeft size={18} />
-                  Previous Lesson
-                </button>
-
-                <span className="text-center text-sm text-slate-500">
-                  Lesson {currentLesson + 1} of {totalLessons}
-                </span>
-
-                <button
-                  onClick={nextLesson}
-                  disabled={
-                    currentLesson === totalLessons - 1
-                  }
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Next Lesson
-                  <ArrowRight size={18} />
-                </button>
-
-              </div>
-
-            </>
-
-          )}
-
-        </main>
-
+            )}
+          </main>
+        </div>
       </div>
-
     </div>
   );
 }

@@ -15,7 +15,31 @@ function Quiz() {
 
   const courseId = Number(id);
 
-  // Convert numeric course ID to the quiz key used in quizzes.js
+  // ======================================================
+  // CURRENT USER
+  // ======================================================
+
+  const getCurrentUser = () => {
+    const userData =
+      localStorage.getItem("codeninja-user");
+
+    if (!userData) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(userData);
+    } catch {
+      return null;
+    }
+  };
+
+  const user = getCurrentUser();
+
+  // ======================================================
+  // QUIZ KEY
+  // ======================================================
+
   const quizKeyMap = {
     1: "dsa",
     2: "full-stack",
@@ -29,23 +53,51 @@ function Quiz() {
 
   const quizKey = quizKeyMap[courseId];
 
+  // ======================================================
+  // COURSE
+  // ======================================================
+
   const course = courses.find(
     (item) => Number(item.id) === courseId
   );
 
-  const questions = quizKey ? quizzes[quizKey] : null;
+  const questions = quizKey
+    ? quizzes[quizKey]
+    : null;
 
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [selectedAnswer, setSelectedAnswer] = useState(null);
+  // ======================================================
+  // USER-SPECIFIC QUIZ STORAGE KEY
+  // ======================================================
+
+  const quizScoreKey = user?.id
+    ? `quiz-score-${user.id}-${courseId}`
+    : `quiz-score-guest-${courseId}`;
+
+  // ======================================================
+  // QUIZ STATE
+  // ======================================================
+
+  const [currentQuestion, setCurrentQuestion] =
+    useState(0);
+
+  const [selectedAnswer, setSelectedAnswer] =
+    useState(null);
+
   const [answers, setAnswers] = useState([]);
-  const [submitted, setSubmitted] = useState(false);
-  const [finished, setFinished] = useState(false);
+
+  const [submitted, setSubmitted] =
+    useState(false);
+
+  const [finished, setFinished] =
+    useState(false);
+
   const [score, setScore] = useState(0);
+
   const [saving, setSaving] = useState(false);
 
-  const user = JSON.parse(
-    localStorage.getItem("codeninja-user")
-  );
+  // ======================================================
+  // RESET QUIZ WHEN COURSE CHANGES
+  // ======================================================
 
   useEffect(() => {
     setCurrentQuestion(0);
@@ -63,7 +115,9 @@ function Quiz() {
   if (!course || !questions) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6">
+
         <div className="text-center bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
+
           <h1 className="text-3xl font-bold text-gray-900">
             Quiz Not Found
           </h1>
@@ -78,19 +132,24 @@ function Quiz() {
           >
             Browse Courses
           </Link>
+
         </div>
+
       </div>
     );
   }
 
-  const question = questions[currentQuestion];
+  const question =
+    questions[currentQuestion];
 
   // --------------------------------------------------
   // SELECT ANSWER
   // --------------------------------------------------
 
   const handleSelect = (answerIndex) => {
-    if (submitted) return;
+    if (submitted) {
+      return;
+    }
 
     setSelectedAnswer(answerIndex);
   };
@@ -100,7 +159,9 @@ function Quiz() {
   // --------------------------------------------------
 
   const handleSubmit = () => {
-    if (selectedAnswer === null) return;
+    if (selectedAnswer === null) {
+      return;
+    }
 
     setAnswers((previousAnswers) => [
       ...previousAnswers,
@@ -115,7 +176,9 @@ function Quiz() {
   // --------------------------------------------------
 
   const handleNext = async () => {
-    if (selectedAnswer === null) return;
+    if (selectedAnswer === null) {
+      return;
+    }
 
     const finalAnswers = [
       ...answers,
@@ -126,27 +189,47 @@ function Quiz() {
     let finalScore = 0;
 
     questions.forEach((item, index) => {
-      if (finalAnswers[index] === item.answer) {
+      if (
+        finalAnswers[index] ===
+        item.answer
+      ) {
         finalScore++;
       }
     });
 
-    // If this is the last question, finish quiz
-    if (currentQuestion === questions.length - 1) {
+    // ------------------------------------------------
+    // LAST QUESTION
+    // ------------------------------------------------
+
+    if (
+      currentQuestion ===
+      questions.length - 1
+    ) {
       setScore(finalScore);
       setFinished(true);
       setSaving(true);
 
-      // Save locally
+      // ==============================================
+      // SAVE QUIZ SCORE FOR CURRENT USER ONLY
+      // ==============================================
+
       localStorage.setItem(
-        `quiz-score-${courseId}`,
+        quizScoreKey,
         JSON.stringify({
           score: finalScore,
           total: questions.length,
         })
       );
 
-      // Save to backend
+      console.log(
+        "Quiz score saved locally:",
+        quizScoreKey
+      );
+
+      // ==============================================
+      // SAVE TO BACKEND
+      // ==============================================
+
       if (user?.id) {
         try {
           const response = await fetch(
@@ -154,7 +237,8 @@ function Quiz() {
             {
               method: "POST",
               headers: {
-                "Content-Type": "application/json",
+                "Content-Type":
+                  "application/json",
               },
               body: JSON.stringify({
                 score: finalScore,
@@ -163,7 +247,8 @@ function Quiz() {
             }
           );
 
-          const data = await response.json();
+          const data =
+            await response.json();
 
           console.log(
             "Quiz backend response:",
@@ -185,10 +270,14 @@ function Quiz() {
       }
 
       setSaving(false);
+
       return;
     }
 
-    // Move to next question
+    // ------------------------------------------------
+    // MOVE TO NEXT QUESTION
+    // ------------------------------------------------
+
     setCurrentQuestion(
       (previousQuestion) =>
         previousQuestion + 1
@@ -222,15 +311,18 @@ function Quiz() {
 
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-6">
+
         <div className="max-w-3xl mx-auto">
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
 
             <div className="w-20 h-20 mx-auto rounded-full bg-green-100 flex items-center justify-center">
+
               <CheckCircle
                 size={44}
                 className="text-green-600"
               />
+
             </div>
 
             <h1 className="mt-6 text-3xl font-bold text-gray-900">
@@ -238,7 +330,8 @@ function Quiz() {
             </h1>
 
             <p className="mt-3 text-gray-600">
-              You have completed the {course.title} quiz.
+              You have completed the{" "}
+              {course.title} quiz.
             </p>
 
             {/* SCORE CARDS */}
@@ -246,6 +339,7 @@ function Quiz() {
             <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
 
               <div className="bg-blue-50 rounded-xl p-5">
+
                 <p className="text-3xl font-bold text-blue-600">
                   {percentage}%
                 </p>
@@ -253,9 +347,11 @@ function Quiz() {
                 <p className="mt-1 text-sm text-gray-600">
                   Your Score
                 </p>
+
               </div>
 
               <div className="bg-green-50 rounded-xl p-5">
+
                 <p className="text-3xl font-bold text-green-600">
                   {score}
                 </p>
@@ -263,19 +359,24 @@ function Quiz() {
                 <p className="mt-1 text-sm text-gray-600">
                   Correct
                 </p>
+
               </div>
 
               <div className="bg-red-50 rounded-xl p-5">
+
                 <p className="text-3xl font-bold text-red-600">
-                  {questions.length - score}
+                  {questions.length -
+                    score}
                 </p>
 
                 <p className="mt-1 text-sm text-gray-600">
                   Incorrect
                 </p>
+
               </div>
 
               <div className="bg-gray-100 rounded-xl p-5">
+
                 <p className="text-3xl font-bold text-gray-700">
                   {questions.length}
                 </p>
@@ -283,6 +384,7 @@ function Quiz() {
                 <p className="mt-1 text-sm text-gray-600">
                   Total
                 </p>
+
               </div>
 
             </div>
@@ -293,6 +395,7 @@ function Quiz() {
 
               {percentage >= 70 ? (
                 <>
+
                   <h2 className="text-xl font-bold text-green-700">
                     Excellent Work! 🚀
                   </h2>
@@ -300,9 +403,11 @@ function Quiz() {
                   <p className="mt-2 text-gray-600">
                     You have a strong understanding of this course.
                   </p>
+
                 </>
               ) : (
                 <>
+
                   <h2 className="text-xl font-bold text-gray-800">
                     Good Effort! 👍
                   </h2>
@@ -311,6 +416,7 @@ function Quiz() {
                     You have a good foundation. Review the lessons
                     and try the quiz again.
                   </p>
+
                 </>
               )}
 
@@ -332,16 +438,22 @@ function Quiz() {
                 onClick={handleRetry}
                 className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50"
               >
+
                 <RotateCcw size={18} />
+
                 Retry Quiz
+
               </button>
 
               <Link
                 to={`/courses/${courseId}/learn`}
                 className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700"
               >
+
                 Continue Learn
+
                 <ArrowRight size={18} />
+
               </Link>
 
             </div>
@@ -349,6 +461,7 @@ function Quiz() {
           </div>
 
         </div>
+
       </div>
     );
   }
@@ -375,7 +488,8 @@ function Quiz() {
           </h1>
 
           <p className="mt-2 text-gray-600">
-            Question {currentQuestion + 1} of{" "}
+            Question{" "}
+            {currentQuestion + 1} of{" "}
             {questions.length}
           </p>
 
@@ -397,16 +511,19 @@ function Quiz() {
               (option, index) => {
 
                 const isSelected =
-                  selectedAnswer === index;
+                  selectedAnswer ===
+                  index;
 
                 const isCorrect =
                   submitted &&
-                  index === question.answer;
+                  index ===
+                    question.answer;
 
                 const isWrong =
                   submitted &&
                   isSelected &&
-                  index !== question.answer;
+                  index !==
+                    question.answer;
 
                 return (
                   <button
@@ -429,10 +546,13 @@ function Quiz() {
                     <div className="flex items-center gap-3">
 
                       <span className="font-semibold text-gray-500">
+
                         {String.fromCharCode(
                           65 + index
                         )}
+
                         .
+
                       </span>
 
                       <span className="flex-1">
@@ -467,23 +587,31 @@ function Quiz() {
           <div className="mt-8 flex justify-end">
 
             {!submitted ? (
+
               <button
                 onClick={handleSubmit}
-                disabled={selectedAnswer === null}
+                disabled={
+                  selectedAnswer === null
+                }
                 className="px-6 py-3 rounded-lg bg-blue-600 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700"
               >
                 Submit Answer
               </button>
+
             ) : (
+
               <button
                 onClick={handleNext}
                 className="px-6 py-3 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700"
               >
+
                 {currentQuestion ===
                 questions.length - 1
                   ? "Finish Quiz"
                   : "Next Question"}
+
               </button>
+
             )}
 
           </div>

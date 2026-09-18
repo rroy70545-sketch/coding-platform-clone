@@ -22,6 +22,7 @@ import Dashboard from "./pages/Dashboard";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
+import CertificateVerify from "./pages/CertificateVerify";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -65,7 +66,10 @@ function AppContent() {
           {/* =========================
               HOME
           ========================= */}
-          <Route path="/" element={<Home />} />
+          <Route
+            path="/"
+            element={<Home />}
+          />
 
           {/* =========================
               COURSES
@@ -84,13 +88,11 @@ function AppContent() {
               LEARNING
           ========================= */}
 
-          {/* Original learning URL */}
           <Route
             path="/courses/:id/learn"
             element={<LearnCourse />}
           />
 
-          {/* Dashboard Continue / Review URL */}
           <Route
             path="/learn/:id"
             element={<LearnCourse />}
@@ -99,14 +101,25 @@ function AppContent() {
           {/* =========================
               QUIZ
           ========================= */}
+
           <Route
             path="/courses/:id/quiz"
             element={<Quiz />}
           />
 
           {/* =========================
+              CERTIFICATE VERIFICATION
+          ========================= */}
+
+          <Route
+            path="/certificate"
+            element={<CertificateVerify />}
+          />
+
+          {/* =========================
               PROTECTED DASHBOARD
           ========================= */}
+
           <Route
             path="/dashboard"
             element={
@@ -119,6 +132,7 @@ function AppContent() {
           {/* =========================
               PROTECTED PROFILE
           ========================= */}
+
           <Route
             path="/profile"
             element={
@@ -131,6 +145,7 @@ function AppContent() {
           {/* =========================
               AUTHENTICATION
           ========================= */}
+
           <Route
             path="/signup"
             element={<Signup />}

@@ -14,60 +14,11 @@ import {
 
 import courses from "../data/courses";
 
-const API_URL = "http://localhost:5000";
-
-// ============================================
-// NORMALIZE QUIZ SCORE
-// ============================================
-
-function normalizeQuizScore(quiz) {
-  if (!quiz) {
-    return null;
-  }
-
-  const score = Number(quiz.score || 0);
-
-  const total = Number(
-    quiz.total ||
-      quiz.totalQuestions ||
-      0
-  );
-
-  let percentage = 0;
-
-  if (
-    quiz.percentage !== undefined &&
-    quiz.percentage !== null
-  ) {
-    percentage = Number(quiz.percentage);
-  } else if (total > 0) {
-    percentage = Math.round(
-      (score / total) * 100
-    );
-  }
-
-  return {
-    ...quiz,
-    score: score,
-    total: total,
-    totalQuestions: total,
-    percentage: percentage,
-  };
-}
-
-// ============================================
-// DASHBOARD
-// ============================================
-
 function Dashboard() {
-  // ==========================================
-  // USER
-  // ==========================================
-
-  const storedUser =
-    localStorage.getItem("codeninja-user");
+  const storedUser = localStorage.getItem("codeninja-user");
 
   let user = {
+    id: null,
     name: "Student",
     email: "student@example.com",
   };
@@ -76,316 +27,256 @@ function Dashboard() {
     try {
       user = JSON.parse(storedUser);
     } catch {
-      console.log(
-        "Could not read user data."
-      );
+      console.log("Could not read user data.");
     }
   }
 
-  // ==========================================
-  // STATES
-  // ==========================================
-
-  const [courseProgress, setCourseProgress] =
-    useState({});
-
-  const [quizScores, setQuizScores] =
-    useState({});
-
-  const [loadingProgress, setLoadingProgress] =
-    useState(true);
-
-  const [loadingQuiz, setLoadingQuiz] =
-    useState(true);
+  const [courseProgress, setCourseProgress] = useState({});
+  const [quizScores, setQuizScores] = useState({});
+  const [loadingProgress, setLoadingProgress] = useState(true);
 
   // ==========================================
-  // LOAD COURSE PROGRESS
+  // LOAD USER-SPECIFIC PROGRESS + QUIZ SCORES
   // ==========================================
 
   useEffect(() => {
-    async function loadAllProgress() {
+    const loadUserData = async () => {
       if (!user.id) {
         setLoadingProgress(false);
         return;
       }
 
       const progressData = {};
+      const quizData = {};
 
-      for (const course of courses) {
-        try {
-          const response = await fetch(
-            API_URL +
-              "/api/progress/" +
-              user.id +
-              "/" +
-              course.id
-          );
+      try {
+        // ======================================
+        // LOAD PROGRESS FOR EVERY COURSE
+        // ======================================
 
-          const data = await response.json();
-
-          if (
-            response.ok &&
-            Array.isArray(
-              data.completedLessons
-            )
-          ) {
-            progressData[course.id] =
-              data.completedLessons;
-
-            localStorage.setItem(
-              "course-progress-" +
-                course.id,
-              JSON.stringify(
-                data.completedLessons
-              )
+        for (const course of courses) {
+          try {
+            const response = await fetch(
+              `http://localhost:5000/api/progress/${user.id}/${course.id}`
             );
-          } else {
-            const savedProgress =
-              localStorage.getItem(
-                "course-progress-" +
-                  course.id
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+              // Backend uses completed_lessons
+              // Support both snake_case and camelCase
+              let completedLessons = [];
+
+              if (Array.isArray(data.progress?.completed_lessons)) {
+                completedLessons = data.progress.completed_lessons;
+              } else if (Array.isArray(data.progress?.completedLessons)) {
+                completedLessons = data.progress.completedLessons;
+              } else if (Array.isArray(data.completedLessons)) {
+                completedLessons = data.completedLessons;
+              }
+
+              progressData[course.id] = completedLessons;
+
+              // Save ONLY for this user
+              localStorage.setItem(
+                `course-progress-${user.id}-${course.id}`,
+                JSON.stringify(completedLessons)
               );
-
-            if (savedProgress) {
-              const parsed =
-                JSON.parse(savedProgress);
-
-              progressData[course.id] =
-                Array.isArray(parsed)
-                  ? parsed
-                  : [];
             } else {
               progressData[course.id] = [];
             }
-          }
-        } catch (error) {
-          console.log(
-            "Using local progress for course:",
-            course.id
-          );
+          } catch (error) {
+            console.error(
+              `Could not load progress for course ${course.id}:`,
+              error
+            );
 
-          try {
-            const savedProgress =
-              localStorage.getItem(
-                "course-progress-" +
-                  course.id
+            // Fallback to this user's LocalStorage
+            try {
+              const savedProgress = localStorage.getItem(
+                `course-progress-${user.id}-${course.id}`
               );
 
-            const parsed = savedProgress
-              ? JSON.parse(savedProgress)
-              : [];
-
-            progressData[course.id] =
-              Array.isArray(parsed)
-                ? parsed
+              const parsedProgress = savedProgress
+                ? JSON.parse(savedProgress)
                 : [];
-          } catch {
-            progressData[course.id] = [];
+
+              progressData[course.id] = Array.isArray(parsedProgress)
+                ? parsedProgress
+                : [];
+            } catch {
+              progressData[course.id] = [];
+            }
           }
         }
-      }
 
-      setCourseProgress(progressData);
-      setLoadingProgress(false);
-    }
+        // ======================================
+        // LOAD QUIZ SCORES FOR THIS USER
+        // ======================================
 
-    loadAllProgress();
-  }, [user.id]);
-
-  // ==========================================
-  // LOAD QUIZ SCORES
-  // ==========================================
-
-  useEffect(() => {
-    async function loadQuizScores() {
-      if (!user.id) {
-        setLoadingQuiz(false);
-        return;
-      }
-
-      const scoreData = {};
-
-      try {
-        const response = await fetch(
-          API_URL +
-            "/api/quiz/user/" +
-            user.id
-        );
-
-        const data = await response.json();
-
-        if (
-          response.ok &&
-          Array.isArray(data.scores)
-        ) {
-          data.scores.forEach((item) => {
-            /*
-             * IMPORTANT:
-             *
-             * Backend may return:
-             * "1"
-             * "1.0"
-             * 1
-             *
-             * Convert all of them to:
-             * "1"
-             */
-
-            const courseId = String(
-              Number(item.courseId)
+        for (const course of courses) {
+          try {
+            const response = await fetch(
+              `http://localhost:5000/api/quiz/${user.id}/${course.id}`
             );
 
-            /*
-             * Backend returns newest scores first.
-             * Keep only the latest score.
-             */
+            const data = await response.json();
 
-            if (!scoreData[courseId]) {
-              scoreData[courseId] =
-                normalizeQuizScore(item);
-            }
-          });
-        }
-      } catch (error) {
-        console.log(
-          "Could not load quiz scores from backend."
-        );
-      }
+            if (response.ok && data.success && data.result) {
+              const result = data.result;
 
-      // ========================================
-      // LOCAL STORAGE FALLBACK
-      // ========================================
-
-      courses.forEach((course) => {
-        const courseId = String(
-          Number(course.id)
-        );
-
-        if (scoreData[courseId]) {
-          localStorage.setItem(
-            "quiz-score-" + course.id,
-            JSON.stringify(
-              scoreData[courseId]
-            )
-          );
-
-          return;
-        }
-
-        try {
-          const savedQuiz =
-            localStorage.getItem(
-              "quiz-score-" + course.id
-            );
-
-          if (savedQuiz) {
-            const parsedQuiz =
-              JSON.parse(savedQuiz);
-
-            const normalized =
-              normalizeQuizScore(
-                parsedQuiz
+              const score = Number(result.score || 0);
+              const total = Number(
+                result.total ?? result.total_questions ?? 0
               );
 
-            if (normalized) {
-              scoreData[courseId] =
-                normalized;
+              const percentage =
+                total > 0
+                  ? Math.round((score / total) * 100)
+                  : 0;
+
+              const quizResult = {
+                score,
+                total,
+                percentage,
+              };
+
+              quizData[course.id] = quizResult;
+
+              // Save ONLY for this user
+              localStorage.setItem(
+                `quiz-score-${user.id}-${course.id}`,
+                JSON.stringify(quizResult)
+              );
+            } else {
+              // If backend has no quiz score,
+              // check this user's LocalStorage.
+              const savedQuiz = localStorage.getItem(
+                `quiz-score-${user.id}-${course.id}`
+              );
+
+              if (savedQuiz) {
+                const parsedQuiz = JSON.parse(savedQuiz);
+
+                if (parsedQuiz) {
+                  quizData[course.id] = parsedQuiz;
+                }
+              }
+            }
+          } catch (error) {
+            console.error(
+              `Could not load quiz score for course ${course.id}:`,
+              error
+            );
+
+            // Fallback to user-specific LocalStorage
+            try {
+              const savedQuiz = localStorage.getItem(
+                `quiz-score-${user.id}-${course.id}`
+              );
+
+              if (savedQuiz) {
+                const parsedQuiz = JSON.parse(savedQuiz);
+
+                if (parsedQuiz) {
+                  quizData[course.id] = parsedQuiz;
+                }
+              }
+            } catch {
+              // Ignore invalid LocalStorage data
             }
           }
-        } catch {
-          console.log(
-            "Could not read quiz score for course:",
-            course.id
-          );
         }
-      });
 
-      setQuizScores(scoreData);
-      setLoadingQuiz(false);
-    }
+        setCourseProgress(progressData);
+        setQuizScores(quizData);
+      } catch (error) {
+        console.error("Unable to load user data:", error);
+      } finally {
+        setLoadingProgress(false);
+      }
+    };
 
-    loadQuizScores();
+    loadUserData();
   }, [user.id]);
 
   // ==========================================
-  // CREATE COURSE DATA
+  // PREPARE COURSE DATA
   // ==========================================
 
   const courseData = courses.map((course) => {
     const completedLessons =
       courseProgress[course.id] || [];
 
-    const courseId = String(
-      Number(course.id)
-    );
-
     const quizScore =
-      quizScores[courseId] || null;
+      quizScores[course.id] || null;
 
     const totalLessons =
       course.curriculum?.length || 0;
 
     const progress =
       totalLessons > 0
-        ? Math.round(
-            (completedLessons.length /
-              totalLessons) *
-              100
+        ? Math.min(
+            100,
+            Math.round(
+              (completedLessons.length / totalLessons) * 100
+            )
           )
         : 0;
 
     return {
       ...course,
-      completedLessons:
-        completedLessons,
-      totalLessons: totalLessons,
-      progress: progress,
-      quizScore: quizScore,
+      completedLessons,
+      totalLessons,
+      progress,
+      quizScore,
     };
   });
 
   // ==========================================
-  // STATISTICS
+  // DASHBOARD STATISTICS
   // ==========================================
-
-  const totalCourses =
-    courseData.length;
-
-  const completedCourses =
-    courseData.filter(
-      (course) =>
-        course.progress === 100
-    ).length;
-
-  const quizzesCompleted =
-    courseData.filter(
-      (course) =>
-        course.quizScore !== null
-    ).length;
 
   const totalLessonsCompleted =
     courseData.reduce(
       (total, course) =>
-        total +
-        course.completedLessons.length,
+        total + course.completedLessons.length,
       0
     );
 
+  const coursesStarted =
+    courseData.filter(
+      (course) =>
+        course.completedLessons.length > 0
+    ).length;
+
+  const completedCourses =
+    courseData.filter(
+      (course) => course.progress === 100
+    ).length;
+
+  const quizzesCompleted =
+    courseData.filter(
+      (course) => course.quizScore !== null
+    ).length;
+
   const overallProgress =
-    totalCourses > 0
+    courseData.length > 0
       ? Math.round(
           courseData.reduce(
             (total, course) =>
               total + course.progress,
             0
-          ) / totalCourses
+          ) / courseData.length
         )
       : 0;
 
   // ==========================================
-  // CONTINUE COURSE
+  // CONTINUE LEARNING
   // ==========================================
 
+  // First choose an unfinished course that has progress.
+  // This prevents a completed course from appearing here.
   const continueCourse =
     courseData.find(
       (course) =>
@@ -396,35 +287,24 @@ function Dashboard() {
       (course) =>
         course.progress === 0
     ) ||
-    courseData[0];
+    null;
 
-  // ==========================================
-  // RECENT ACTIVITY
-  // ==========================================
-
-  const recentCourses =
-    courseData.filter(
-      (course) =>
-        course.completedLessons.length >
-          0 ||
-        course.quizScore !== null
-    );
+  const firstLetter = user.name
+    ? user.name.charAt(0).toUpperCase()
+    : "S";
 
   // ==========================================
   // LOADING
   // ==========================================
 
-  if (
-    loadingProgress ||
-    loadingQuiz
-  ) {
+  if (loadingProgress) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
 
-          <p className="text-slate-600">
-            Loading your dashboard...
+          <p className="font-medium text-slate-600">
+            Loading your learning progress...
           </p>
         </div>
       </div>
@@ -432,362 +312,342 @@ function Dashboard() {
   }
 
   // ==========================================
-  // MAIN DASHBOARD
+  // PAGE
   // ==========================================
 
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* ======================================
-          HEADER
-      ======================================= */}
-
+      {/* Header */}
       <section className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white">
-        <div className="max-w-7xl mx-auto px-6 py-10">
-
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="mx-auto max-w-7xl px-6 py-12">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
 
             <div>
-              <p className="text-sm text-blue-200 mb-2">
+              <p className="mb-2 text-sm font-medium text-blue-200">
                 Student Dashboard
               </p>
 
-              <h1 className="text-3xl md:text-4xl font-bold">
-                Welcome, {user.name || "Student"}!
+              <h1 className="text-3xl font-bold md:text-4xl">
+                Welcome back, {user.name}! 👋
               </h1>
 
-              <p className="mt-2 text-slate-300">
-                Continue learning and improve your
-                coding skills.
+              <p className="mt-3 text-slate-300">
+                Continue learning and keep building your
+                skills.
               </p>
             </div>
 
             <Link
               to="/profile"
-              className="inline-flex items-center justify-center gap-2 bg-white text-slate-900 px-5 py-3 rounded-xl font-semibold hover:bg-slate-100 transition"
+              className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 font-semibold text-slate-900 transition hover:bg-slate-100"
             >
               <User size={18} />
               View Profile
             </Link>
-
           </div>
         </div>
       </section>
 
-      {/* ======================================
-          MAIN
-      ======================================= */}
+      <main className="mx-auto max-w-7xl px-6 py-10">
 
-      <main className="max-w-7xl mx-auto px-6 py-10">
+        {/* User Card */}
+        <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
 
-        {/* ====================================
-            STATISTICS
-        ===================================== */}
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 text-2xl font-bold text-white">
+              {firstLetter}
+            </div>
 
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">
+                {user.name}
+              </h2>
+
+              <p className="mt-1 text-slate-500">
+                {user.email}
+              </p>
+
+              <p className="mt-2 text-sm text-green-600">
+                ● Account Active
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Learning Overview */}
         <section className="mb-10">
-
-          <h2 className="text-2xl font-bold text-slate-900 mb-5">
+          <h2 className="mb-5 text-2xl font-bold text-slate-900">
             Learning Overview
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
 
-            {/* Overall Progress */}
-
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-
-              <div className="flex items-center justify-between mb-4">
-
-                <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="rounded-xl bg-blue-100 p-3 text-blue-600">
                   <Target size={22} />
                 </div>
 
                 <span className="text-2xl font-bold text-slate-900">
                   {overallProgress}%
                 </span>
-
               </div>
 
               <h3 className="font-semibold text-slate-900">
                 Overall Progress
               </h3>
 
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="mt-1 text-sm text-slate-500">
                 Across all courses
               </p>
-
             </div>
 
-            {/* Courses */}
-
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-
-              <div className="flex items-center justify-between mb-4">
-
-                <div className="w-11 h-11 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="rounded-xl bg-indigo-100 p-3 text-indigo-600">
                   <BookOpen size={22} />
                 </div>
 
                 <span className="text-2xl font-bold text-slate-900">
-                  {totalCourses}
+                  {coursesStarted}
                 </span>
-
               </div>
 
               <h3 className="font-semibold text-slate-900">
-                Total Courses
+                Courses Started
               </h3>
 
-              <p className="text-sm text-slate-500 mt-1">
-                Available courses
+              <p className="mt-1 text-sm text-slate-500">
+                Courses you have started
               </p>
-
             </div>
 
-            {/* Lessons */}
-
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-
-              <div className="flex items-center justify-between mb-4">
-
-                <div className="w-11 h-11 rounded-xl bg-green-100 flex items-center justify-center text-green-600">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="rounded-xl bg-green-100 p-3 text-green-600">
                   <CheckCircle2 size={22} />
                 </div>
 
                 <span className="text-2xl font-bold text-slate-900">
                   {totalLessonsCompleted}
                 </span>
-
               </div>
 
               <h3 className="font-semibold text-slate-900">
                 Lessons Completed
               </h3>
 
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="mt-1 text-sm text-slate-500">
                 Lessons finished
               </p>
-
             </div>
 
-            {/* Quizzes */}
-
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-
-              <div className="flex items-center justify-between mb-4">
-
-                <div className="w-11 h-11 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="rounded-xl bg-purple-100 p-3 text-purple-600">
                   <Trophy size={22} />
                 </div>
 
                 <span className="text-2xl font-bold text-slate-900">
                   {quizzesCompleted}
                 </span>
-
               </div>
 
               <h3 className="font-semibold text-slate-900">
                 Quizzes Completed
               </h3>
 
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="mt-1 text-sm text-slate-500">
                 Quizzes attempted
               </p>
-
             </div>
 
           </div>
         </section>
 
-        {/* ====================================
-            CONTINUE LEARNING
-        ===================================== */}
+        {/* Continue Learning */}
+        <section className="mb-10">
+          <div className="mb-5">
+            <h2 className="text-2xl font-bold text-slate-900">
+              Continue Learning
+            </h2>
 
-        {continueCourse && (
-          <section className="mb-10">
+            <p className="mt-1 text-sm text-slate-500">
+              Pick up where you left off.
+            </p>
+          </div>
 
-            <div className="mb-5">
-              <h2 className="text-2xl font-bold text-slate-900">
-                Continue Learning
-              </h2>
+          {continueCourse ? (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
-              <p className="text-sm text-slate-500 mt-1">
-                Pick up where you left off.
-              </p>
-            </div>
+              <div className="grid md:grid-cols-3">
 
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white md:col-span-1">
 
-              <div className="p-6">
+                  <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-white/15">
+                    {continueCourse.icon && (
+                      <continueCourse.icon size={28} />
+                    )}
+                  </div>
 
-                <div className="flex flex-col md:flex-row md:items-center gap-6">
+                  <p className="mb-2 text-sm text-blue-100">
+                    {continueCourse.category}
+                  </p>
 
-                  {/* Icon */}
+                  <h3 className="text-2xl font-bold">
+                    {continueCourse.title}
+                  </h3>
 
-                  <div className="w-16 h-16 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                  <p className="mt-3 text-sm leading-6 text-blue-100">
+                    {continueCourse.description}
+                  </p>
+                </div>
 
-                    {continueCourse.icon ? (
-                      <continueCourse.icon
-                        size={30}
-                      />
-                    ) : (
-                      <BookOpen size={30} />
+                <div className="p-8 md:col-span-2">
+
+                  <div className="mb-6 flex items-center justify-between">
+
+                    <div>
+                      <p className="text-sm text-slate-500">
+                        Your Progress
+                      </p>
+
+                      <p className="mt-1 text-3xl font-bold text-slate-900">
+                        {continueCourse.progress}%
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-100 p-3 text-slate-600">
+                      <Clock3 size={24} />
+                    </div>
+
+                  </div>
+
+                  <div className="mb-6 h-3 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-blue-600 transition-all"
+                      style={{
+                        width: `${continueCourse.progress}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="mb-6 flex flex-wrap gap-5 text-sm text-slate-500">
+
+                    <span>
+                      {continueCourse.completedLessons.length} /{" "}
+                      {continueCourse.totalLessons} lessons completed
+                    </span>
+
+                    {continueCourse.quizScore && (
+                      <span>
+                        Quiz:{" "}
+                        {continueCourse.quizScore.percentage}%
+                      </span>
                     )}
 
                   </div>
 
-                  {/* Course Info */}
+                  <div className="flex flex-wrap gap-3">
 
-                  <div className="flex-1">
+                    <Link
+                      to={`/courses/${continueCourse.id}/learn`}
+                      className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
+                    >
+                      <PlayCircle size={18} />
+                      Continue Learning
+                      <ArrowRight size={18} />
+                    </Link>
 
-                    <h3 className="text-xl font-bold text-slate-900">
-                      {continueCourse.title}
-                    </h3>
-
-                    <p className="text-slate-500 mt-1">
-                      {continueCourse.description}
-                    </p>
-
-                    <div className="flex flex-wrap gap-4 mt-4 text-sm">
-
-                      <span className="text-slate-500">
-                        {
-                          continueCourse
-                            .completedLessons
-                            .length
-                        }
-                        /
-                        {
-                          continueCourse.totalLessons
-                        }{" "}
-                        lessons
-                      </span>
-
-                      {continueCourse.quizScore && (
-                        <span className="text-green-600 font-semibold">
-                          Quiz{" "}
-                          {
-                            continueCourse
-                              .quizScore
-                              .percentage
-                          }%
-                        </span>
-                      )}
-
-                    </div>
+                    <Link
+                      to={`/courses/${continueCourse.id}`}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Course Details
+                    </Link>
 
                   </div>
-
-                  {/* Progress */}
-
-                  <div className="w-full md:w-52">
-
-                    <div className="flex justify-between text-sm mb-2">
-
-                      <span className="text-slate-500">
-                        Progress
-                      </span>
-
-                      <span className="font-semibold text-slate-900">
-                        {continueCourse.progress}%
-                      </span>
-
-                    </div>
-
-                    <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
-
-                      <div
-                        className="h-full bg-blue-600 rounded-full"
-                        style={{
-                          width:
-                            continueCourse.progress +
-                            "%",
-                        }}
-                      />
-
-                    </div>
-
-                  </div>
-
-                  {/* Button */}
-
-                  <Link
-                    to={
-                      "/learn/" +
-                      continueCourse.id
-                    }
-                    className="inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl font-semibold hover:bg-blue-700 transition shrink-0"
-                  >
-                    <PlayCircle size={18} />
-                    Continue
-                  </Link>
-
                 </div>
+
               </div>
             </div>
-          </section>
-        )}
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+              <Award
+                className="mx-auto mb-4 text-green-500"
+                size={42}
+              />
 
-        {/* ====================================
-            MY LEARNING
-        ===================================== */}
+              <h3 className="text-xl font-bold text-slate-900">
+                All available courses completed!
+              </h3>
 
+              <p className="mt-2 text-slate-500">
+                Explore more courses to continue learning.
+              </p>
+
+              <Link
+                to="/courses"
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
+              >
+                Browse Courses
+                <ArrowRight size={18} />
+              </Link>
+            </div>
+          )}
+        </section>
+
+        {/* My Learning */}
         <section className="mb-10">
 
           <div className="mb-5">
-
             <h2 className="text-2xl font-bold text-slate-900">
               My Learning
             </h2>
 
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="mt-1 text-sm text-slate-500">
               Track your progress across all courses.
             </p>
-
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
             {courseData.map((course) => (
               <div
                 key={course.id}
-                className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition"
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
               >
 
-                {/* Course Header */}
+                <div className="flex items-center gap-4 border-b border-slate-100 p-5">
 
-                <div className="flex items-center gap-4 p-5 border-b border-slate-100">
-
-                  <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-
-                    {course.icon ? (
+                  <div
+                    className={`flex h-12 w-12 items-center justify-center rounded-xl ${
+                      course.color ||
+                      "bg-blue-100 text-blue-600"
+                    }`}
+                  >
+                    {course.icon && (
                       <course.icon size={24} />
-                    ) : (
-                      <BookOpen size={24} />
                     )}
-
                   </div>
 
                   <div className="min-w-0">
 
-                    <h3 className="font-bold text-slate-900 truncate">
+                    <h3 className="truncate font-bold text-slate-900">
                       {course.title}
                     </h3>
 
-                    <p className="text-sm text-slate-500 mt-1">
-                      {course.level ||
-                        "Beginner"}
+                    <p className="mt-1 text-sm text-slate-500">
+                      {course.level}
                     </p>
 
                   </div>
-
                 </div>
-
-                {/* Course Details */}
 
                 <div className="p-5">
 
-                  <div className="flex justify-between text-sm mb-2">
+                  <div className="mb-2 flex items-center justify-between text-sm">
 
                     <span className="text-slate-500">
                       Progress
@@ -799,45 +659,28 @@ function Dashboard() {
 
                   </div>
 
-                  <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mb-5">
-
+                  <div className="mb-5 h-2 overflow-hidden rounded-full bg-slate-200">
                     <div
-                      className="h-full bg-blue-600 rounded-full"
+                      className="h-full rounded-full bg-blue-600 transition-all"
                       style={{
-                        width:
-                          course.progress +
-                          "%",
+                        width: `${course.progress}%`,
                       }}
                     />
-
                   </div>
 
-                  <div className="flex items-center justify-between text-sm mb-5">
+                  <div className="mb-5 flex items-center justify-between text-sm text-slate-500">
 
-                    <span className="text-slate-500">
-                      {
-                        course
-                          .completedLessons
-                          .length
-                      }
-                      /
-                      {course.totalLessons}{" "}
-                      lessons
+                    <span>
+                      {course.completedLessons.length}/
+                      {course.totalLessons} lessons
                     </span>
 
                     {course.quizScore ? (
-                      <span className="text-green-600 font-semibold flex items-center gap-1">
-                        <Trophy size={15} />
-                        Quiz{" "}
-                        {
-                          course.quizScore
-                            .percentage
-                        }%
+                      <span className="font-medium text-green-600">
+                        Quiz {course.quizScore.percentage}%
                       </span>
                     ) : (
-                      <span className="text-slate-400">
-                        No quiz
-                      </span>
+                      <span>No quiz</span>
                     )}
 
                   </div>
@@ -845,11 +688,8 @@ function Dashboard() {
                   <div className="flex gap-2">
 
                     <Link
-                      to={
-                        "/learn/" +
-                        course.id
-                      }
-                      className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition"
+                      to={`/courses/${course.id}/learn`}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
                     >
                       <PlayCircle size={16} />
 
@@ -861,231 +701,236 @@ function Dashboard() {
                     </Link>
 
                     <Link
-                      to={
-                        "/courses/" +
-                        course.id
-                      }
-                      className="px-4 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+                      to={`/courses/${course.id}`}
+                      className="flex items-center justify-center rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                     >
                       Details
                     </Link>
 
                   </div>
-
                 </div>
-
               </div>
             ))}
 
           </div>
         </section>
 
-        {/* ====================================
-            COMPLETED COURSES
-        ===================================== */}
-
+        {/* Completed Courses */}
         {completedCourses > 0 && (
           <section className="mb-10">
 
-            <div className="mb-5">
+            <div className="rounded-2xl border border-green-200 bg-green-50 p-6">
 
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                <Award
-                  size={24}
-                  className="text-yellow-500"
-                />
-                Achievements
-              </h2>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-              <p className="text-sm text-slate-500 mt-1">
-                Your completed courses and quiz
-                results.
-              </p>
+                <div className="flex items-center gap-4">
 
-            </div>
+                  <div className="rounded-xl bg-green-100 p-3 text-green-600">
+                    <Award size={26} />
+                  </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  <div>
 
-              {courseData
-                .filter(
-                  (course) =>
-                    course.progress ===
-                    100
-                )
-                .map((course) => (
-                  <div
-                    key={course.id}
-                    className="bg-white border border-green-200 rounded-2xl p-5 shadow-sm"
-                  >
+                    <h2 className="font-bold text-green-900">
+                      Congratulations! 🎉
+                    </h2>
 
-                    <div className="flex items-center gap-4">
-
-                      <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center text-green-600">
-                        <Award size={24} />
-                      </div>
-
-                      <div>
-
-                        <h3 className="font-bold text-slate-900">
-                          {course.title}
-                        </h3>
-
-                        <p className="text-sm text-green-600 mt-1">
-                          Course Completed
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                    {course.quizScore && (
-                      <div className="mt-4 p-3 rounded-lg bg-green-50">
-
-                        <div className="flex justify-between">
-
-                          <span className="text-sm text-slate-600">
-                            Quiz Score
-                          </span>
-
-                          <span className="font-bold text-green-600">
-                            {
-                              course.quizScore
-                                .percentage
-                            }%
-                          </span>
-
-                        </div>
-
-                        <p className="text-xs text-slate-500 mt-1">
-                          {
-                            course.quizScore
-                              .score
-                          }{" "}
-                          /{" "}
-                          {
-                            course.quizScore
-                              .total
-                          }{" "}
-                          correct
-                        </p>
-
-                      </div>
-                    )}
+                    <p className="mt-1 text-sm text-green-700">
+                      You have completed{" "}
+                      {completedCourses} course
+                      {completedCourses > 1 ? "s" : ""}.
+                    </p>
 
                   </div>
-                ))}
+                </div>
 
+                <span className="font-semibold text-green-700">
+                  Keep learning!
+                </span>
+
+              </div>
             </div>
           </section>
         )}
 
-        {/* ====================================
-            RECENT ACTIVITY
-        ===================================== */}
+        {/* Quick Actions */}
+        <section className="mb-10">
 
-        <section>
+          <h2 className="mb-5 text-2xl font-bold text-slate-900">
+            Quick Actions
+          </h2>
 
-          <div className="mb-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
-            <h2 className="text-2xl font-bold text-slate-900">
-              Recent Activity
-            </h2>
+            <Link
+              to="/courses"
+              className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
+            >
+              <BookOpen
+                className="mb-3 text-blue-600"
+                size={25}
+              />
 
-            <p className="text-sm text-slate-500 mt-1">
-              Your recent learning activity.
-            </p>
+              <h3 className="font-bold text-slate-900">
+                Browse Courses
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Explore all available courses.
+              </p>
+
+              <ArrowRight
+                className="mt-4 text-slate-400 transition group-hover:translate-x-1"
+                size={18}
+              />
+            </Link>
+
+            <Link
+              to="/profile"
+              className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
+            >
+              <User
+                className="mb-3 text-indigo-600"
+                size={25}
+              />
+
+              <h3 className="font-bold text-slate-900">
+                My Profile
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Manage your account.
+              </p>
+
+              <ArrowRight
+                className="mt-4 text-slate-400 transition group-hover:translate-x-1"
+                size={18}
+              />
+            </Link>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+
+              <CheckCircle2
+                className="mb-3 text-green-600"
+                size={25}
+              />
+
+              <h3 className="font-bold text-slate-900">
+                Lessons
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-500">
+                {totalLessonsCompleted} lessons completed
+                so far.
+              </p>
+
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+
+              <Trophy
+                className="mb-3 text-purple-600"
+                size={25}
+              />
+
+              <h3 className="font-bold text-slate-900">
+                Achievements
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-500">
+                {completedCourses} course
+                {completedCourses !== 1 ? "s" : ""} completed.
+              </p>
+
+            </div>
 
           </div>
+        </section>
 
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm divide-y">
+        {/* Recent Activity */}
+        <section>
 
-            {recentCourses.length > 0 ? (
-              recentCourses.map((course) => (
-                <div
-                  key={course.id}
-                  className="p-5 flex flex-col sm:flex-row sm:items-center gap-4"
-                >
+          <h2 className="mb-5 text-2xl font-bold text-slate-900">
+            Recent Activity
+          </h2>
 
-                  <div className="w-11 h-11 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-                    <CheckCircle2 size={21} />
-                  </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
-                  <div className="flex-1">
-
-                    <h3 className="font-semibold text-slate-900">
-                      {course.title}
-                    </h3>
-
-                    <div className="flex flex-wrap gap-4 mt-1 text-sm text-slate-500">
-
-                      <span>
-                        {
-                          course
-                            .completedLessons
-                            .length
-                        }{" "}
-                        lesson
-                        {
-                          course
-                            .completedLessons
-                            .length !== 1
-                            ? "s"
-                            : ""
-                        }{" "}
-                        completed
-                      </span>
-
-                      {course.quizScore && (
-                        <span className="text-green-600 font-semibold">
-                          Quiz{" "}
-                          {
-                            course.quizScore
-                              .percentage
-                          }%
-                        </span>
-                      )}
-
-                    </div>
-
-                  </div>
-
-                  <Link
-                    to={
-                      "/learn/" +
-                      course.id
-                    }
-                    className="inline-flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700"
-                  >
-                    Continue
-                    <ArrowRight size={16} />
-                  </Link>
-
-                </div>
-              ))
-            ) : (
-              <div className="p-8 text-center">
+            {totalLessonsCompleted === 0 &&
+            quizzesCompleted === 0 ? (
+              <div className="py-8 text-center">
 
                 <BookOpen
+                  className="mx-auto mb-4 text-slate-300"
                   size={40}
-                  className="mx-auto text-slate-300 mb-3"
                 />
 
-                <h3 className="font-semibold text-slate-900">
-                  No recent activity
+                <h3 className="font-semibold text-slate-700">
+                  No activity yet
                 </h3>
 
-                <p className="text-sm text-slate-500 mt-1">
-                  Start a course to see your activity
-                  here.
+                <p className="mt-1 text-sm text-slate-500">
+                  Start a course to see your learning activity here.
                 </p>
 
                 <Link
                   to="/courses"
-                  className="inline-flex items-center gap-2 mt-4 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  className="mt-5 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
                 >
                   Explore Courses
                   <ArrowRight size={16} />
                 </Link>
+
+              </div>
+            ) : (
+              <div className="space-y-4">
+
+                {courseData
+                  .filter(
+                    (course) =>
+                      course.completedLessons.length > 0 ||
+                      course.quizScore !== null
+                  )
+                  .map((course) => (
+                    <div
+                      key={course.id}
+                      className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4"
+                    >
+
+                      <div className="flex min-w-0 items-center gap-4">
+
+                        <div className="rounded-lg bg-blue-100 p-2.5 text-blue-600">
+                          <CheckCircle2 size={20} />
+                        </div>
+
+                        <div className="min-w-0">
+
+                          <p className="font-semibold text-slate-900">
+                            {course.title}
+                          </p>
+
+                          <p className="mt-1 text-sm text-slate-500">
+                            {course.completedLessons.length} lesson
+                            {course.completedLessons.length !== 1
+                              ? "s"
+                              : ""}{" "}
+                            completed
+                          </p>
+
+                        </div>
+                      </div>
+
+                      <Link
+                        to={`/courses/${course.id}/learn`}
+                        className="shrink-0 text-sm font-semibold text-blue-600 hover:text-blue-700"
+                      >
+                        {course.progress === 100
+                          ? "Review →"
+                          : "Continue →"}
+                      </Link>
+
+                    </div>
+                  ))}
 
               </div>
             )}

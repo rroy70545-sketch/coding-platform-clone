@@ -1,42 +1,33 @@
 const express = require("express");
 const cors = require("cors");
-
 const db = require("./database");
 
 const app = express();
 const PORT = 5000;
 
-// =====================================================
-// MIDDLEWARE
-// =====================================================
-
 app.use(cors());
 app.use(express.json());
 
-// =====================================================
+// ===============================
 // TEST ROUTE
-// =====================================================
-
+// ===============================
 app.get("/api/test", (req, res) => {
   res.json({
     success: true,
-    message: "CodeNinja backend is working!",
+    message: "Backend server is working",
   });
 });
 
-// =====================================================
+// ===============================
 // DATABASE TEST
-// =====================================================
-
+// ===============================
 app.get("/api/database-test", (req, res) => {
   try {
-    const result = db
-      .prepare("SELECT 1 AS test")
-      .get();
+    const result = db.prepare("SELECT 1 AS test").get();
 
     res.json({
       success: true,
-      message: "Database connection successful!",
+      message: "Database connection is working",
       result,
     });
   } catch (error) {
@@ -50,18 +41,13 @@ app.get("/api/database-test", (req, res) => {
   }
 });
 
-// =====================================================
+// ===============================
 // GET ALL COURSES
-// =====================================================
-
+// ===============================
 app.get("/api/courses", (req, res) => {
   try {
     const courses = db
-      .prepare(`
-        SELECT *
-        FROM courses
-        ORDER BY id
-      `)
+      .prepare("SELECT * FROM courses ORDER BY id")
       .all();
 
     res.json({
@@ -69,7 +55,7 @@ app.get("/api/courses", (req, res) => {
       courses,
     });
   } catch (error) {
-    console.error("Courses fetch error:", error);
+    console.error("Get courses error:", error);
 
     res.status(500).json({
       success: false,
@@ -79,20 +65,15 @@ app.get("/api/courses", (req, res) => {
   }
 });
 
-// =====================================================
+// ===============================
 // GET SINGLE COURSE
-// =====================================================
-
+// ===============================
 app.get("/api/courses/:id", (req, res) => {
-  const courseId = Number(req.params.id);
-
   try {
+    const courseId = Number(req.params.id);
+
     const course = db
-      .prepare(`
-        SELECT *
-        FROM courses
-        WHERE id = ?
-      `)
+      .prepare("SELECT * FROM courses WHERE id = ?")
       .get(courseId);
 
     if (!course) {
@@ -107,7 +88,7 @@ app.get("/api/courses/:id", (req, res) => {
       course,
     });
   } catch (error) {
-    console.error("Single course fetch error:", error);
+    console.error("Get course error:", error);
 
     res.status(500).json({
       success: false,
@@ -117,62 +98,40 @@ app.get("/api/courses/:id", (req, res) => {
   }
 });
 
-// =====================================================
-// SIGNUP
-// =====================================================
-
+// ===============================
+// SIGN UP
+// ===============================
 app.post("/api/signup", (req, res) => {
-  const { name, email, password } = req.body;
-
-  if (!name || !email || !password) {
-    return res.status(400).json({
-      success: false,
-      message: "Name, email and password are required",
-    });
-  }
-
   try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email and password are required",
+      });
+    }
+
     const existingUser = db
-      .prepare(`
-        SELECT id
-        FROM users
-        WHERE email = ?
-      `)
+      .prepare("SELECT * FROM users WHERE email = ?")
       .get(email);
 
     if (existingUser) {
-      return res.status(409).json({
+      return res.status(400).json({
         success: false,
         message: "Email already registered",
       });
     }
 
-    const createUser = db.prepare(`
-      INSERT INTO users
-      (
-        name,
-        email,
-        password
+    const result = db
+      .prepare(
+        `INSERT INTO users (name, email, password)
+         VALUES (?, ?, ?)`
       )
-      VALUES (?, ?, ?)
-    `);
-
-    const result = createUser.run(
-      name,
-      email,
-      password
-    );
+      .run(name, email, password);
 
     const user = db
-      .prepare(`
-        SELECT
-          id,
-          name,
-          email,
-          created_at
-        FROM users
-        WHERE id = ?
-      `)
+      .prepare("SELECT id, name, email, created_at FROM users WHERE id = ?")
       .get(result.lastInsertRowid);
 
     res.status(201).json({
@@ -185,39 +144,33 @@ app.post("/api/signup", (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Failed to create account",
+      message: "Signup failed",
       error: error.message,
     });
   }
 });
 
-// =====================================================
+// ===============================
 // LOGIN
-// =====================================================
-
+// ===============================
 app.post("/api/login", (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({
-      success: false,
-      message: "Email and password are required",
-    });
-  }
-
   try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+
     const user = db
-      .prepare(`
-        SELECT
-          id,
-          name,
-          email,
-          password,
-          created_at
-        FROM users
-        WHERE email = ?
-      `)
-      .get(email);
+      .prepare(
+        `SELECT id, name, email, created_at
+         FROM users
+         WHERE email = ? AND password = ?`
+      )
+      .get(email, password);
 
     if (!user) {
       return res.status(401).json({
@@ -225,15 +178,6 @@ app.post("/api/login", (req, res) => {
         message: "Invalid email or password",
       });
     }
-
-    if (user.password !== password) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
-    }
-
-    delete user.password;
 
     res.json({
       success: true,
@@ -251,24 +195,19 @@ app.post("/api/login", (req, res) => {
   }
 });
 
-// =====================================================
+// ===============================
 // GET USER
-// =====================================================
-
+// ===============================
 app.get("/api/users/:id", (req, res) => {
-  const userId = Number(req.params.id);
-
   try {
+    const userId = Number(req.params.id);
+
     const user = db
-      .prepare(`
-        SELECT
-          id,
-          name,
-          email,
-          created_at
-        FROM users
-        WHERE id = ?
-      `)
+      .prepare(
+        `SELECT id, name, email, created_at
+         FROM users
+         WHERE id = ?`
+      )
       .get(userId);
 
     if (!user) {
@@ -283,7 +222,7 @@ app.get("/api/users/:id", (req, res) => {
       user,
     });
   } catch (error) {
-    console.error("User fetch error:", error);
+    console.error("Get user error:", error);
 
     res.status(500).json({
       success: false,
@@ -293,91 +232,56 @@ app.get("/api/users/:id", (req, res) => {
   }
 });
 
-// =====================================================
+// ===============================
 // UPDATE USER PROFILE
-// =====================================================
-
+// ===============================
 app.put("/api/users/:id", (req, res) => {
-  const userId = Number(req.params.id);
-  const { name, email } = req.body;
-
-  if (!name || !email) {
-    return res.status(400).json({
-      success: false,
-      message: "Name and email are required",
-    });
-  }
-
-  const trimmedName = String(name).trim();
-  const trimmedEmail = String(email).trim();
-
-  if (!trimmedName || !trimmedEmail) {
-    return res.status(400).json({
-      success: false,
-      message: "Name and email cannot be empty",
-    });
-  }
-
   try {
-    // Check whether another user already uses this email
+    const userId = Number(req.params.id);
+    const { name, email } = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "Name and email are required",
+      });
+    }
+
     const existingUser = db
-      .prepare(`
-        SELECT id
-        FROM users
-        WHERE email = ?
-          AND id != ?
-      `)
-      .get(trimmedEmail, userId);
+      .prepare(
+        `SELECT id FROM users
+         WHERE email = ? AND id != ?`
+      )
+      .get(email, userId);
 
     if (existingUser) {
-      return res.status(409).json({
+      return res.status(400).json({
         success: false,
-        message: "Email already registered by another user",
+        message: "Email is already being used",
       });
     }
 
-    // Update profile
-    const result = db
-      .prepare(`
-        UPDATE users
-        SET
-          name = ?,
-          email = ?
-        WHERE id = ?
-      `)
-      .run(
-        trimmedName,
-        trimmedEmail,
-        userId
-      );
+    db.prepare(
+      `UPDATE users
+       SET name = ?, email = ?
+       WHERE id = ?`
+    ).run(name, email, userId);
 
-    if (result.changes === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    // Get updated user
-    const updatedUser = db
-      .prepare(`
-        SELECT
-          id,
-          name,
-          email,
-          created_at
-        FROM users
-        WHERE id = ?
-      `)
+    const user = db
+      .prepare(
+        `SELECT id, name, email, created_at
+         FROM users
+         WHERE id = ?`
+      )
       .get(userId);
 
     res.json({
       success: true,
       message: "Profile updated successfully",
-      user: updatedUser,
+      user,
     });
   } catch (error) {
-    console.error("Profile update error:", error);
+    console.error("Update profile error:", error);
 
     res.status(500).json({
       success: false,
@@ -387,40 +291,23 @@ app.put("/api/users/:id", (req, res) => {
   }
 });
 
-// =====================================================
-// CHANGE USER PASSWORD
-// =====================================================
-
+// ===============================
+// UPDATE PASSWORD
+// ===============================
 app.put("/api/users/:id/password", (req, res) => {
-  const userId = Number(req.params.id);
-  const { currentPassword, newPassword } = req.body;
-
-  if (!currentPassword || !newPassword) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "Current password and new password are required",
-    });
-  }
-
-  if (String(newPassword).length < 6) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "New password must be at least 6 characters long",
-    });
-  }
-
   try {
-    // Get current password from database
+    const userId = Number(req.params.id);
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password and new password are required",
+      });
+    }
+
     const user = db
-      .prepare(`
-        SELECT
-          id,
-          password
-        FROM users
-        WHERE id = ?
-      `)
+      .prepare("SELECT * FROM users WHERE id = ?")
       .get(userId);
 
     if (!user) {
@@ -430,99 +317,88 @@ app.put("/api/users/:id/password", (req, res) => {
       });
     }
 
-    // Check current password
     if (user.password !== currentPassword) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
         message: "Current password is incorrect",
       });
     }
 
-    // Update password
-    db.prepare(`
-      UPDATE users
-      SET password = ?
-      WHERE id = ?
-    `).run(
-      newPassword,
-      userId
-    );
+    db.prepare(
+      `UPDATE users
+       SET password = ?
+       WHERE id = ?`
+    ).run(newPassword, userId);
 
     res.json({
       success: true,
-      message: "Password changed successfully",
+      message: "Password updated successfully",
     });
   } catch (error) {
-    console.error("Password change error:", error);
+    console.error("Password update error:", error);
 
     res.status(500).json({
       success: false,
-      message: "Failed to change password",
+      message: "Failed to update password",
       error: error.message,
     });
   }
 });
 
-// =====================================================
+// ===============================
 // SAVE COURSE PROGRESS
-// =====================================================
-
+// ===============================
 app.post("/api/progress/:userId/:courseId", (req, res) => {
-  const userId = Number(req.params.userId);
-  const courseId = Number(req.params.courseId);
-
-  const completedLessons =
-    Array.isArray(req.body.completedLessons)
-      ? req.body.completedLessons
-      : [];
-
   try {
-    const saveProgress = db.prepare(`
-      INSERT INTO progress
-      (
-        user_id,
-        course_id,
-        completed_lessons,
-        updated_at
+    const userId = Number(req.params.userId);
+    const courseId = Number(req.params.courseId);
+
+    // Accept both naming styles so existing frontend code continues working.
+    const completedLessons =
+      req.body.completed_lessons ??
+      req.body.completedLessons ??
+      [];
+
+    const completedLessonsJson = JSON.stringify(completedLessons);
+
+    const existing = db
+      .prepare(
+        `SELECT id
+         FROM progress
+         WHERE user_id = ? AND course_id = ?`
       )
-      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      .get(userId, courseId);
 
-      ON CONFLICT(user_id, course_id)
-      DO UPDATE SET
-        completed_lessons = excluded.completed_lessons,
-        updated_at = CURRENT_TIMESTAMP
-    `);
-
-    saveProgress.run(
-      userId,
-      courseId,
-      JSON.stringify(completedLessons)
-    );
+    if (existing) {
+      db.prepare(
+        `UPDATE progress
+         SET completed_lessons = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ? AND course_id = ?`
+      ).run(completedLessonsJson, userId, courseId);
+    } else {
+      db.prepare(
+        `INSERT INTO progress
+         (user_id, course_id, completed_lessons)
+         VALUES (?, ?, ?)`
+      ).run(userId, courseId, completedLessonsJson);
+    }
 
     const progress = db
-      .prepare(`
-        SELECT *
-        FROM progress
-        WHERE user_id = ?
-          AND course_id = ?
-      `)
+      .prepare(
+        `SELECT *
+         FROM progress
+         WHERE user_id = ? AND course_id = ?`
+      )
       .get(userId, courseId);
 
     res.json({
       success: true,
       message: "Progress saved successfully",
-      progress: {
-        id: progress.id,
-        userId: progress.user_id,
-        courseId: progress.course_id,
-        completedLessons: JSON.parse(
-          progress.completed_lessons || "[]"
-        ),
-        updatedAt: progress.updated_at,
-      },
+      progress,
     });
   } catch (error) {
-    console.error("Progress save error:", error);
+    console.error("Save progress error:", error);
 
     res.status(500).json({
       success: false,
@@ -532,45 +408,49 @@ app.post("/api/progress/:userId/:courseId", (req, res) => {
   }
 });
 
-// =====================================================
+// ===============================
 // GET COURSE PROGRESS
-// =====================================================
-
+// ===============================
 app.get("/api/progress/:userId/:courseId", (req, res) => {
-  const userId = Number(req.params.userId);
-  const courseId = Number(req.params.courseId);
-
   try {
+    const userId = Number(req.params.userId);
+    const courseId = Number(req.params.courseId);
+
     const progress = db
-      .prepare(`
-        SELECT *
-        FROM progress
-        WHERE user_id = ?
-          AND course_id = ?
-      `)
+      .prepare(
+        `SELECT *
+         FROM progress
+         WHERE user_id = ? AND course_id = ?`
+      )
       .get(userId, courseId);
 
     if (!progress) {
       return res.json({
         success: true,
-        userId,
-        courseId,
+        progress: {
+          completed_lessons: "[]",
+        },
         completedLessons: [],
-        updatedAt: null,
       });
+    }
+
+    let completedLessons = [];
+
+    try {
+      completedLessons = JSON.parse(
+        progress.completed_lessons || "[]"
+      );
+    } catch {
+      completedLessons = [];
     }
 
     res.json({
       success: true,
-      userId: progress.user_id,
-      courseId: progress.course_id,
-      completedLessons: JSON.parse(
-        progress.completed_lessons || "[]"
-      ),
-      updatedAt: progress.updated_at,
+      progress,
+      completedLessons,
     });
   } catch (error) {
-    console.error("Progress fetch error:", error);
+    console.error("Get progress error:", error);
 
     res.status(500).json({
       success: false,
@@ -580,62 +460,73 @@ app.get("/api/progress/:userId/:courseId", (req, res) => {
   }
 });
 
-// =====================================================
+// ===============================
 // SAVE QUIZ SCORE
-// =====================================================
-
+// ===============================
 app.post("/api/quiz/:userId/:courseId", (req, res) => {
-  const userId = Number(req.params.userId);
-  const courseId = Number(req.params.courseId);
-
-  const score = Number(req.body.score);
-  const total = Number(req.body.total);
-
-  if (
-    Number.isNaN(score) ||
-    Number.isNaN(total)
-  ) {
-    return res.status(400).json({
-      success: false,
-      message: "Score and total are required",
-    });
-  }
-
   try {
-    const saveQuizScore = db.prepare(`
-      INSERT INTO quiz_scores
-      (
-        user_id,
-        course_id,
-        score,
-        total_questions,
-        total
-      )
-      VALUES (?, ?, ?, ?, ?)
-    `);
+    const userId = Number(req.params.userId);
+    const courseId = Number(req.params.courseId);
 
-    const result = saveQuizScore.run(
-      userId,
-      courseId,
-      score,
-      total,
-      total
+    const score = Number(req.body.score ?? 0);
+    const totalQuestions = Number(
+      req.body.total_questions ??
+      req.body.total ??
+      0
     );
+
+    const existing = db
+      .prepare(
+        `SELECT id
+         FROM quiz_scores
+         WHERE user_id = ? AND course_id = ?`
+      )
+      .get(userId, courseId);
+
+    if (existing) {
+      db.prepare(
+        `UPDATE quiz_scores
+         SET score = ?,
+             total_questions = ?,
+             total = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ? AND course_id = ?`
+      ).run(
+        score,
+        totalQuestions,
+        totalQuestions,
+        userId,
+        courseId
+      );
+    } else {
+      db.prepare(
+        `INSERT INTO quiz_scores
+         (user_id, course_id, score, total_questions, total)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(
+        userId,
+        courseId,
+        score,
+        totalQuestions,
+        totalQuestions
+      );
+    }
+
+    const quiz = db
+      .prepare(
+        `SELECT *
+         FROM quiz_scores
+         WHERE user_id = ? AND course_id = ?`
+      )
+      .get(userId, courseId);
 
     res.json({
       success: true,
       message: "Quiz score saved successfully",
-      score: {
-        id: result.lastInsertRowid,
-        userId,
-        courseId,
-        score,
-        total,
-        totalQuestions: total,
-      },
+      quiz,
     });
   } catch (error) {
-    console.error("Quiz score save error:", error);
+    console.error("Save quiz score error:", error);
 
     res.status(500).json({
       success: false,
@@ -645,54 +536,35 @@ app.post("/api/quiz/:userId/:courseId", (req, res) => {
   }
 });
 
-// =====================================================
-// GET LATEST QUIZ SCORE
-// =====================================================
-
+// ===============================
+// GET QUIZ SCORE
+// ===============================
 app.get("/api/quiz/:userId/:courseId", (req, res) => {
-  const userId = Number(req.params.userId);
-  const courseId = Number(req.params.courseId);
-
   try {
-    const quizScore = db
-      .prepare(`
-        SELECT *
-        FROM quiz_scores
-        WHERE user_id = ?
-          AND course_id = ?
-        ORDER BY id DESC
-        LIMIT 1
-      `)
+    const userId = Number(req.params.userId);
+    const courseId = Number(req.params.courseId);
+
+    const quiz = db
+      .prepare(
+        `SELECT *
+         FROM quiz_scores
+         WHERE user_id = ? AND course_id = ?`
+      )
       .get(userId, courseId);
 
-    if (!quizScore) {
+    if (!quiz) {
       return res.json({
         success: true,
-        score: null,
+        quiz: null,
       });
     }
 
     res.json({
       success: true,
-      score: {
-        id: quizScore.id,
-        userId: quizScore.user_id,
-        courseId: quizScore.course_id,
-        score: quizScore.score,
-        total:
-          quizScore.total ??
-          quizScore.total_questions,
-        totalQuestions:
-          quizScore.total_questions ??
-          quizScore.total,
-        createdAt:
-          quizScore.created_at ??
-          quizScore.updated_at ??
-          null,
-      },
+      quiz,
     });
   } catch (error) {
-    console.error("Quiz score fetch error:", error);
+    console.error("Get quiz score error:", error);
 
     res.status(500).json({
       success: false,
@@ -702,51 +574,28 @@ app.get("/api/quiz/:userId/:courseId", (req, res) => {
   }
 });
 
-// =====================================================
+// ===============================
 // GET ALL QUIZ SCORES FOR USER
-// =====================================================
-
+// ===============================
 app.get("/api/quiz/user/:userId", (req, res) => {
-  const userId = Number(req.params.userId);
-
   try {
-    const scores = db
-      .prepare(`
-        SELECT
-          quiz_scores.*,
-          courses.title AS course_title
-        FROM quiz_scores
-        LEFT JOIN courses
-          ON quiz_scores.course_id = courses.id
-        WHERE quiz_scores.user_id = ?
-        ORDER BY quiz_scores.id DESC
-      `)
-      .all(userId);
+    const userId = Number(req.params.userId);
 
-    const formattedScores = scores.map((item) => ({
-      id: item.id,
-      userId: item.user_id,
-      courseId: item.course_id,
-      courseTitle: item.course_title,
-      score: item.score,
-      total:
-        item.total ??
-        item.total_questions,
-      totalQuestions:
-        item.total_questions ??
-        item.total,
-      createdAt:
-        item.created_at ??
-        item.updated_at ??
-        null,
-    }));
+    const quizzes = db
+      .prepare(
+        `SELECT *
+         FROM quiz_scores
+         WHERE user_id = ?
+         ORDER BY course_id`
+      )
+      .all(userId);
 
     res.json({
       success: true,
-      scores: formattedScores,
+      quizzes,
     });
   } catch (error) {
-    console.error("User quiz scores fetch error:", error);
+    console.error("Get user quiz scores error:", error);
 
     res.status(500).json({
       success: false,
@@ -757,9 +606,161 @@ app.get("/api/quiz/user/:userId", (req, res) => {
 });
 
 // =====================================================
-// 404 ROUTE
+// CERTIFICATE VERIFICATION
 // =====================================================
+// New certificate format:
+//
+// CNA-{courseId}-{userId}-{timestamp}
+//
+// Example:
+//
+// CNA-1-2-1789704585624
+//
+// The important difference is that the certificate now
+// contains the USER ID. Therefore we don't have to search
+// all users and accidentally return somebody else's name.
+// =====================================================
+app.get("/api/certificate/:certificateId", (req, res) => {
+  try {
+    const certificateId = req.params.certificateId;
 
+    if (!certificateId) {
+      return res.status(400).json({
+        success: false,
+        message: "Certificate ID is required",
+      });
+    }
+
+    const parts = certificateId.split("-");
+
+    // Expected:
+    // CNA
+    // courseId
+    // userId
+    // timestamp
+    if (parts.length !== 4 || parts[0] !== "CNA") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid certificate ID format. Please download a new certificate.",
+      });
+    }
+
+    const courseId = Number(parts[1]);
+    const userId = Number(parts[2]);
+    const timestamp = Number(parts[3]);
+
+    if (
+      !Number.isInteger(courseId) ||
+      !Number.isInteger(userId) ||
+      !Number.isFinite(timestamp)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid certificate ID",
+      });
+    }
+
+    // Check that the course exists.
+    const course = db
+      .prepare("SELECT * FROM courses WHERE id = ?")
+      .get(courseId);
+
+    if (!course) {
+      return res.status(404).json({
+        success: false,
+        message: "Course associated with this certificate was not found",
+      });
+    }
+
+    // Check that the user exists.
+    const user = db
+      .prepare(
+        `SELECT id, name, email
+         FROM users
+         WHERE id = ?`
+      )
+      .get(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Student associated with this certificate was not found",
+      });
+    }
+
+    // Get ONLY this user's progress for this course.
+    const progress = db
+      .prepare(
+        `SELECT *
+         FROM progress
+         WHERE user_id = ? AND course_id = ?`
+      )
+      .get(userId, courseId);
+
+    if (!progress) {
+      return res.status(404).json({
+        success: false,
+        message: "No course completion record was found",
+      });
+    }
+
+    let completedLessons = [];
+
+    try {
+      completedLessons = JSON.parse(
+        progress.completed_lessons || "[]"
+      );
+    } catch {
+      completedLessons = [];
+    }
+
+    if (
+      !Array.isArray(completedLessons) ||
+      completedLessons.length === 0
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: "Course has not been completed",
+      });
+    }
+
+    // The timestamp is part of the certificate ID and is kept
+    // as certificate metadata. We intentionally do NOT compare
+    // it with progress.updated_at because a student may download
+    // their certificate days after completing the course.
+    const completionDate =
+      progress.updated_at || new Date(timestamp).toISOString();
+
+    res.json({
+      success: true,
+      verified: true,
+
+      certificate: {
+        certificateId,
+        studentName: user.name,
+        studentEmail: user.email,
+        courseTitle: course.title,
+        courseId: course.id,
+        userId: user.id,
+        completionDate,
+        completionPercentage: 100,
+      },
+    });
+  } catch (error) {
+    console.error("Certificate verification error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to verify certificate",
+      error: error.message,
+    });
+  }
+});
+
+// ===============================
+// 404 ROUTE
+// ===============================
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -767,10 +768,9 @@ app.use((req, res) => {
   });
 });
 
-// =====================================================
+// ===============================
 // ERROR HANDLER
-// =====================================================
-
+// ===============================
 app.use((error, req, res, next) => {
   console.error("Server error:", error);
 
@@ -781,12 +781,9 @@ app.use((error, req, res, next) => {
   });
 });
 
-// =====================================================
+// ===============================
 // START SERVER
-// =====================================================
-
+// ===============================
 app.listen(PORT, () => {
-  console.log(
-    `CodeNinja backend running on http://localhost:${PORT}`
-  );
+  console.log(`Server running on http://localhost:${PORT}`);
 });
