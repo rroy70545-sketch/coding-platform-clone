@@ -9,6 +9,8 @@ import {
   User,
 } from "lucide-react";
 
+import coursesData from "../data/courses";
+
 function CertificateVerify() {
   const [certificateId, setCertificateId] = useState("");
   const [certificate, setCertificate] = useState(null);
@@ -32,6 +34,55 @@ function CertificateVerify() {
       year: "numeric",
     });
   };
+
+  // ==========================================
+  // GET COURSE NAME FROM COURSE ID
+  // ==========================================
+
+  const getCourseNameFromCertificateId = (id) => {
+    if (!id) {
+      return null;
+    }
+
+    const parts = id.split("-");
+
+    /*
+      New certificate format:
+
+      CNA-COURSE_ID-USER_ID-TIMESTAMP
+
+      Example:
+
+      CNA-2-8-1789746493630
+
+      Course ID = 2
+      User ID   = 8
+    */
+
+    if (parts.length !== 4) {
+      return null;
+    }
+
+    if (parts[0] !== "CNA") {
+      return null;
+    }
+
+    const courseId = Number(parts[1]);
+
+    if (!Number.isInteger(courseId)) {
+      return null;
+    }
+
+    const course = coursesData.find(
+      (item) => Number(item.id) === courseId
+    );
+
+    return course?.title || null;
+  };
+
+  // ==========================================
+  // VERIFY CERTIFICATE
+  // ==========================================
 
   const handleVerify = async (e) => {
     e.preventDefault();
@@ -58,6 +109,25 @@ function CertificateVerify() {
       if (response.ok && data.success && data.certificate) {
         const certificateData = data.certificate;
 
+        // ==========================================
+        // GET COURSE NAME
+        // ==========================================
+
+        const backendCourseName =
+          certificateData.courseName ||
+          certificateData.course_name ||
+          certificateData.course?.title ||
+          certificateData.course?.name;
+
+        const courseName =
+          backendCourseName ||
+          getCourseNameFromCertificateId(id) ||
+          "Course";
+
+        // ==========================================
+        // SAVE CERTIFICATE DATA
+        // ==========================================
+
         setCertificate({
           studentName:
             certificateData.studentName ||
@@ -65,10 +135,7 @@ function CertificateVerify() {
             certificateData.name ||
             "Student",
 
-          courseName:
-            certificateData.courseName ||
-            certificateData.course_name ||
-            "Course",
+          courseName,
 
           certificateId:
             certificateData.certificateId ||
@@ -86,7 +153,10 @@ function CertificateVerify() {
         );
       }
     } catch (error) {
-      console.error("Certificate verification error:", error);
+      console.error(
+        "Certificate verification error:",
+        error
+      );
 
       setError(
         "Unable to connect to the certificate verification service."
@@ -99,11 +169,12 @@ function CertificateVerify() {
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* ================================
+      {/* =================================
           HERO
       ================================= */}
 
       <section className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 px-6 py-16 text-white">
+
         <div className="mx-auto max-w-4xl text-center">
 
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
@@ -120,15 +191,16 @@ function CertificateVerify() {
           </p>
 
         </div>
+
       </section>
 
-      {/* ================================
+      {/* =================================
           MAIN
       ================================= */}
 
       <main className="mx-auto max-w-4xl px-6 py-12">
 
-        {/* ================================
+        {/* =================================
             SEARCH CARD
         ================================= */}
 
@@ -175,16 +247,18 @@ function CertificateVerify() {
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3.5 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
+
               <Search size={18} />
 
               {loading
                 ? "Verifying..."
                 : "Verify Certificate"}
+
             </button>
 
           </form>
 
-          {/* ================================
+          {/* =================================
               ERROR
           ================================= */}
 
@@ -213,7 +287,7 @@ function CertificateVerify() {
 
         </div>
 
-        {/* ================================
+        {/* =================================
             VERIFIED CERTIFICATE
         ================================= */}
 
@@ -273,15 +347,16 @@ function CertificateVerify() {
 
               <div className="grid gap-4 sm:grid-cols-2">
 
-                {/* ================================
-                    STUDENT
-                ================================= */}
+                {/* STUDENT */}
 
                 <div className="rounded-xl bg-slate-50 p-5">
 
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-500">
+
                     <User size={17} />
+
                     Student
+
                   </div>
 
                   <p className="text-lg font-bold capitalize text-slate-900">
@@ -290,15 +365,16 @@ function CertificateVerify() {
 
                 </div>
 
-                {/* ================================
-                    COURSE
-                ================================= */}
+                {/* COURSE */}
 
                 <div className="rounded-xl bg-slate-50 p-5">
 
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-500">
+
                     <BookOpen size={17} />
+
                     Course
+
                   </div>
 
                   <p className="text-lg font-bold text-slate-900">
@@ -307,9 +383,7 @@ function CertificateVerify() {
 
                 </div>
 
-                {/* ================================
-                    CERTIFICATE ID
-                ================================= */}
+                {/* CERTIFICATE ID */}
 
                 <div className="rounded-xl bg-slate-50 p-5">
 
@@ -323,9 +397,7 @@ function CertificateVerify() {
 
                 </div>
 
-                {/* ================================
-                    COMPLETION DATE
-                ================================= */}
+                {/* COMPLETION DATE */}
 
                 <div className="rounded-xl bg-slate-50 p-5">
 
@@ -341,9 +413,7 @@ function CertificateVerify() {
 
               </div>
 
-              {/* ================================
-                  OFFICIAL VERIFICATION
-              ================================= */}
+              {/* OFFICIAL VERIFICATION */}
 
               <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-5">
 
@@ -376,7 +446,7 @@ function CertificateVerify() {
           </div>
         )}
 
-        {/* ================================
+        {/* =================================
             INFORMATION
         ================================= */}
 

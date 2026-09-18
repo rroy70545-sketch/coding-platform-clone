@@ -15,6 +15,10 @@ import {
 import courses from "../data/courses";
 
 function Dashboard() {
+  // ==========================================
+  // LOAD LOGGED-IN USER
+  // ==========================================
+
   const storedUser = localStorage.getItem("codeninja-user");
 
   let user = {
@@ -30,6 +34,10 @@ function Dashboard() {
       console.log("Could not read user data.");
     }
   }
+
+  // ==========================================
+  // STATE
+  // ==========================================
 
   const [courseProgress, setCourseProgress] = useState({});
   const [quizScores, setQuizScores] = useState({});
@@ -49,54 +57,50 @@ function Dashboard() {
       const progressData = {};
       const quizData = {};
 
-      try {
-        // ======================================
-        // LOAD PROGRESS FOR EVERY COURSE
-        // ======================================
+      // ======================================
+      // LOAD PROGRESS FOR EVERY COURSE
+      // ======================================
 
-        for (const course of courses) {
-          try {
-            const response = await fetch(
-              `http://localhost:5000/api/progress/${user.id}/${course.id}`
-            );
+      for (const course of courses) {
+        try {
+          const response = await fetch(
+            `http://localhost:5000/api/progress/${user.id}/${course.id}`
+          );
 
-            const data = await response.json();
+          const data = await response.json();
 
-            if (response.ok && data.success) {
-              // Backend uses completed_lessons
-              // Support both snake_case and camelCase
-              let completedLessons = [];
+          if (response.ok && data.success) {
+            let completedLessons = [];
 
-              if (Array.isArray(data.progress?.completed_lessons)) {
-                completedLessons = data.progress.completed_lessons;
-              } else if (Array.isArray(data.progress?.completedLessons)) {
-                completedLessons = data.progress.completedLessons;
-              } else if (Array.isArray(data.completedLessons)) {
-                completedLessons = data.completedLessons;
-              }
-
-              progressData[course.id] = completedLessons;
-
-              // Save ONLY for this user
-              localStorage.setItem(
-                `course-progress-${user.id}-${course.id}`,
-                JSON.stringify(completedLessons)
-              );
-            } else {
-              progressData[course.id] = [];
+            // Support backend snake_case
+            if (Array.isArray(data.progress?.completed_lessons)) {
+              completedLessons = data.progress.completed_lessons;
             }
-          } catch (error) {
-            console.error(
-              `Could not load progress for course ${course.id}:`,
-              error
+
+            // Support camelCase
+            else if (Array.isArray(data.progress?.completedLessons)) {
+              completedLessons = data.progress.completedLessons;
+            }
+
+            // Support direct response
+            else if (Array.isArray(data.completedLessons)) {
+              completedLessons = data.completedLessons;
+            }
+
+            progressData[course.id] = completedLessons;
+
+            // Save only for this user
+            localStorage.setItem(
+              `course-progress-${user.id}-${course.id}`,
+              JSON.stringify(completedLessons)
+            );
+          } else {
+            // Fallback to localStorage
+            const savedProgress = localStorage.getItem(
+              `course-progress-${user.id}-${course.id}`
             );
 
-            // Fallback to this user's LocalStorage
             try {
-              const savedProgress = localStorage.getItem(
-                `course-progress-${user.id}-${course.id}`
-              );
-
               const parsedProgress = savedProgress
                 ? JSON.parse(savedProgress)
                 : [];
@@ -108,93 +112,116 @@ function Dashboard() {
               progressData[course.id] = [];
             }
           }
-        }
+        } catch (error) {
+          console.error(
+            `Could not load progress for course ${course.id}:`,
+            error
+          );
 
-        // ======================================
-        // LOAD QUIZ SCORES FOR THIS USER
-        // ======================================
-
-        for (const course of courses) {
+          // Fallback to this user's localStorage
           try {
-            const response = await fetch(
-              `http://localhost:5000/api/quiz/${user.id}/${course.id}`
+            const savedProgress = localStorage.getItem(
+              `course-progress-${user.id}-${course.id}`
             );
 
-            const data = await response.json();
+            const parsedProgress = savedProgress
+              ? JSON.parse(savedProgress)
+              : [];
 
-            if (response.ok && data.success && data.result) {
-              const result = data.result;
-
-              const score = Number(result.score || 0);
-              const total = Number(
-                result.total ?? result.total_questions ?? 0
-              );
-
-              const percentage =
-                total > 0
-                  ? Math.round((score / total) * 100)
-                  : 0;
-
-              const quizResult = {
-                score,
-                total,
-                percentage,
-              };
-
-              quizData[course.id] = quizResult;
-
-              // Save ONLY for this user
-              localStorage.setItem(
-                `quiz-score-${user.id}-${course.id}`,
-                JSON.stringify(quizResult)
-              );
-            } else {
-              // If backend has no quiz score,
-              // check this user's LocalStorage.
-              const savedQuiz = localStorage.getItem(
-                `quiz-score-${user.id}-${course.id}`
-              );
-
-              if (savedQuiz) {
-                const parsedQuiz = JSON.parse(savedQuiz);
-
-                if (parsedQuiz) {
-                  quizData[course.id] = parsedQuiz;
-                }
-              }
-            }
-          } catch (error) {
-            console.error(
-              `Could not load quiz score for course ${course.id}:`,
-              error
-            );
-
-            // Fallback to user-specific LocalStorage
-            try {
-              const savedQuiz = localStorage.getItem(
-                `quiz-score-${user.id}-${course.id}`
-              );
-
-              if (savedQuiz) {
-                const parsedQuiz = JSON.parse(savedQuiz);
-
-                if (parsedQuiz) {
-                  quizData[course.id] = parsedQuiz;
-                }
-              }
-            } catch {
-              // Ignore invalid LocalStorage data
-            }
+            progressData[course.id] = Array.isArray(parsedProgress)
+              ? parsedProgress
+              : [];
+          } catch {
+            progressData[course.id] = [];
           }
         }
-
-        setCourseProgress(progressData);
-        setQuizScores(quizData);
-      } catch (error) {
-        console.error("Unable to load user data:", error);
-      } finally {
-        setLoadingProgress(false);
       }
+
+      // ======================================
+      // LOAD QUIZ SCORES FOR THIS USER
+      // ======================================
+
+      for (const course of courses) {
+        try {
+          const response = await fetch(
+            `http://localhost:5000/api/quiz/${user.id}/${course.id}`
+          );
+
+          const data = await response.json();
+
+          if (response.ok && data.success && data.result) {
+            const result = data.result;
+
+            const score = Number(result.score || 0);
+
+            const total = Number(
+              result.total ?? result.total_questions ?? 0
+            );
+
+            const percentage =
+              total > 0
+                ? Math.round((score / total) * 100)
+                : 0;
+
+            const quizResult = {
+              score,
+              total,
+              percentage,
+            };
+
+            quizData[course.id] = quizResult;
+
+            // Save only for this user
+            localStorage.setItem(
+              `quiz-score-${user.id}-${course.id}`,
+              JSON.stringify(quizResult)
+            );
+          } else {
+            // Fallback to this user's localStorage
+            const savedQuiz = localStorage.getItem(
+              `quiz-score-${user.id}-${course.id}`
+            );
+
+            if (savedQuiz) {
+              try {
+                const parsedQuiz = JSON.parse(savedQuiz);
+
+                if (parsedQuiz) {
+                  quizData[course.id] = parsedQuiz;
+                }
+              } catch {
+                // Ignore invalid localStorage
+              }
+            }
+          }
+        } catch (error) {
+          console.error(
+            `Could not load quiz score for course ${course.id}:`,
+            error
+          );
+
+          // Fallback to user-specific localStorage
+          try {
+            const savedQuiz = localStorage.getItem(
+              `quiz-score-${user.id}-${course.id}`
+            );
+
+            if (savedQuiz) {
+              const parsedQuiz = JSON.parse(savedQuiz);
+
+              if (parsedQuiz) {
+                quizData[course.id] = parsedQuiz;
+              }
+            }
+          } catch {
+            // Ignore invalid localStorage
+          }
+        }
+      }
+
+      setCourseProgress(progressData);
+      setQuizScores(quizData);
+      setLoadingProgress(false);
     };
 
     loadUserData();
@@ -211,8 +238,10 @@ function Dashboard() {
     const quizScore =
       quizScores[course.id] || null;
 
-    const totalLessons =
-      course.curriculum?.length || 0;
+    // IMPORTANT:
+    // Every course currently contains 10 lessons
+    // in LearnCourse.jsx.
+    const totalLessons = 10;
 
     const progress =
       totalLessons > 0
@@ -275,8 +304,6 @@ function Dashboard() {
   // CONTINUE LEARNING
   // ==========================================
 
-  // First choose an unfinished course that has progress.
-  // This prevents a completed course from appearing here.
   const continueCourse =
     courseData.find(
       (course) =>
@@ -288,6 +315,10 @@ function Dashboard() {
         course.progress === 0
     ) ||
     null;
+
+  // ==========================================
+  // USER INITIAL
+  // ==========================================
 
   const firstLetter = user.name
     ? user.name.charAt(0).toUpperCase()
@@ -318,9 +349,13 @@ function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* Header */}
+      {/* ======================================
+          HEADER
+      ====================================== */}
+
       <section className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white">
         <div className="mx-auto max-w-7xl px-6 py-12">
+
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
 
             <div>
@@ -345,14 +380,23 @@ function Dashboard() {
               <User size={18} />
               View Profile
             </Link>
+
           </div>
         </div>
       </section>
 
+      {/* ======================================
+          MAIN
+      ====================================== */}
+
       <main className="mx-auto max-w-7xl px-6 py-10">
 
-        {/* User Card */}
+        {/* ====================================
+            USER CARD
+        ==================================== */}
+
         <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
 
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 text-2xl font-bold text-white">
@@ -372,19 +416,28 @@ function Dashboard() {
                 ● Account Active
               </p>
             </div>
+
           </div>
         </div>
 
-        {/* Learning Overview */}
+        {/* ====================================
+            LEARNING OVERVIEW
+        ==================================== */}
+
         <section className="mb-10">
+
           <h2 className="mb-5 text-2xl font-bold text-slate-900">
             Learning Overview
           </h2>
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
 
+            {/* Overall Progress */}
+
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+
               <div className="mb-4 flex items-center justify-between">
+
                 <div className="rounded-xl bg-blue-100 p-3 text-blue-600">
                   <Target size={22} />
                 </div>
@@ -392,6 +445,7 @@ function Dashboard() {
                 <span className="text-2xl font-bold text-slate-900">
                   {overallProgress}%
                 </span>
+
               </div>
 
               <h3 className="font-semibold text-slate-900">
@@ -401,10 +455,15 @@ function Dashboard() {
               <p className="mt-1 text-sm text-slate-500">
                 Across all courses
               </p>
+
             </div>
 
+            {/* Courses Started */}
+
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+
               <div className="mb-4 flex items-center justify-between">
+
                 <div className="rounded-xl bg-indigo-100 p-3 text-indigo-600">
                   <BookOpen size={22} />
                 </div>
@@ -412,6 +471,7 @@ function Dashboard() {
                 <span className="text-2xl font-bold text-slate-900">
                   {coursesStarted}
                 </span>
+
               </div>
 
               <h3 className="font-semibold text-slate-900">
@@ -421,10 +481,15 @@ function Dashboard() {
               <p className="mt-1 text-sm text-slate-500">
                 Courses you have started
               </p>
+
             </div>
 
+            {/* Lessons Completed */}
+
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+
               <div className="mb-4 flex items-center justify-between">
+
                 <div className="rounded-xl bg-green-100 p-3 text-green-600">
                   <CheckCircle2 size={22} />
                 </div>
@@ -432,6 +497,7 @@ function Dashboard() {
                 <span className="text-2xl font-bold text-slate-900">
                   {totalLessonsCompleted}
                 </span>
+
               </div>
 
               <h3 className="font-semibold text-slate-900">
@@ -441,10 +507,15 @@ function Dashboard() {
               <p className="mt-1 text-sm text-slate-500">
                 Lessons finished
               </p>
+
             </div>
 
+            {/* Quizzes */}
+
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+
               <div className="mb-4 flex items-center justify-between">
+
                 <div className="rounded-xl bg-purple-100 p-3 text-purple-600">
                   <Trophy size={22} />
                 </div>
@@ -452,6 +523,7 @@ function Dashboard() {
                 <span className="text-2xl font-bold text-slate-900">
                   {quizzesCompleted}
                 </span>
+
               </div>
 
               <h3 className="font-semibold text-slate-900">
@@ -461,14 +533,20 @@ function Dashboard() {
               <p className="mt-1 text-sm text-slate-500">
                 Quizzes attempted
               </p>
+
             </div>
 
           </div>
         </section>
 
-        {/* Continue Learning */}
+        {/* ====================================
+            CONTINUE LEARNING
+        ==================================== */}
+
         <section className="mb-10">
+
           <div className="mb-5">
+
             <h2 className="text-2xl font-bold text-slate-900">
               Continue Learning
             </h2>
@@ -476,19 +554,25 @@ function Dashboard() {
             <p className="mt-1 text-sm text-slate-500">
               Pick up where you left off.
             </p>
+
           </div>
 
           {continueCourse ? (
+
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
               <div className="grid md:grid-cols-3">
 
+                {/* Course Information */}
+
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white md:col-span-1">
 
                   <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-white/15">
+
                     {continueCourse.icon && (
                       <continueCourse.icon size={28} />
                     )}
+
                   </div>
 
                   <p className="mb-2 text-sm text-blue-100">
@@ -502,13 +586,17 @@ function Dashboard() {
                   <p className="mt-3 text-sm leading-6 text-blue-100">
                     {continueCourse.description}
                   </p>
+
                 </div>
+
+                {/* Progress */}
 
                 <div className="p-8 md:col-span-2">
 
                   <div className="mb-6 flex items-center justify-between">
 
                     <div>
+
                       <p className="text-sm text-slate-500">
                         Your Progress
                       </p>
@@ -516,6 +604,7 @@ function Dashboard() {
                       <p className="mt-1 text-3xl font-bold text-slate-900">
                         {continueCourse.progress}%
                       </p>
+
                     </div>
 
                     <div className="rounded-xl bg-slate-100 p-3 text-slate-600">
@@ -524,14 +613,20 @@ function Dashboard() {
 
                   </div>
 
+                  {/* Progress Bar */}
+
                   <div className="mb-6 h-3 overflow-hidden rounded-full bg-slate-200">
+
                     <div
                       className="h-full rounded-full bg-blue-600 transition-all"
                       style={{
                         width: `${continueCourse.progress}%`,
                       }}
                     />
+
                   </div>
+
+                  {/* Lesson Count */}
 
                   <div className="mb-6 flex flex-wrap gap-5 text-sm text-slate-500">
 
@@ -549,6 +644,8 @@ function Dashboard() {
 
                   </div>
 
+                  {/* Buttons */}
+
                   <div className="flex flex-wrap gap-3">
 
                     <Link
@@ -556,7 +653,9 @@ function Dashboard() {
                       className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
                     >
                       <PlayCircle size={18} />
+
                       Continue Learning
+
                       <ArrowRight size={18} />
                     </Link>
 
@@ -568,12 +667,16 @@ function Dashboard() {
                     </Link>
 
                   </div>
+
                 </div>
 
               </div>
             </div>
+
           ) : (
+
             <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+
               <Award
                 className="mx-auto mb-4 text-green-500"
                 size={42}
@@ -594,14 +697,20 @@ function Dashboard() {
                 Browse Courses
                 <ArrowRight size={18} />
               </Link>
+
             </div>
           )}
+
         </section>
 
-        {/* My Learning */}
+        {/* ====================================
+            MY LEARNING
+        ==================================== */}
+
         <section className="mb-10">
 
           <div className="mb-5">
+
             <h2 className="text-2xl font-bold text-slate-900">
               My Learning
             </h2>
@@ -609,15 +718,19 @@ function Dashboard() {
             <p className="mt-1 text-sm text-slate-500">
               Track your progress across all courses.
             </p>
+
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
             {courseData.map((course) => (
+
               <div
                 key={course.id}
                 className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
               >
+
+                {/* Course Header */}
 
                 <div className="flex items-center gap-4 border-b border-slate-100 p-5">
 
@@ -627,9 +740,11 @@ function Dashboard() {
                       "bg-blue-100 text-blue-600"
                     }`}
                   >
+
                     {course.icon && (
                       <course.icon size={24} />
                     )}
+
                   </div>
 
                   <div className="min-w-0">
@@ -643,7 +758,10 @@ function Dashboard() {
                     </p>
 
                   </div>
+
                 </div>
+
+                {/* Course Progress */}
 
                 <div className="p-5">
 
@@ -659,14 +777,20 @@ function Dashboard() {
 
                   </div>
 
+                  {/* Progress Bar */}
+
                   <div className="mb-5 h-2 overflow-hidden rounded-full bg-slate-200">
+
                     <div
                       className="h-full rounded-full bg-blue-600 transition-all"
                       style={{
                         width: `${course.progress}%`,
                       }}
                     />
+
                   </div>
+
+                  {/* LESSON COUNT */}
 
                   <div className="mb-5 flex items-center justify-between text-sm text-slate-500">
 
@@ -676,14 +800,22 @@ function Dashboard() {
                     </span>
 
                     {course.quizScore ? (
+
                       <span className="font-medium text-green-600">
                         Quiz {course.quizScore.percentage}%
                       </span>
+
                     ) : (
-                      <span>No quiz</span>
+
+                      <span>
+                        No quiz
+                      </span>
+
                     )}
 
                   </div>
+
+                  {/* BUTTONS */}
 
                   <div className="flex gap-2">
 
@@ -691,6 +823,7 @@ function Dashboard() {
                       to={`/courses/${course.id}/learn`}
                       className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
                     >
+
                       <PlayCircle size={16} />
 
                       {course.progress === 0
@@ -698,6 +831,7 @@ function Dashboard() {
                         : course.progress === 100
                           ? "Review Course"
                           : "Continue"}
+
                     </Link>
 
                     <Link
@@ -708,15 +842,22 @@ function Dashboard() {
                     </Link>
 
                   </div>
+
                 </div>
+
               </div>
+
             ))}
 
           </div>
         </section>
 
-        {/* Completed Courses */}
+        {/* ====================================
+            COMPLETED COURSES
+        ==================================== */}
+
         {completedCourses > 0 && (
+
           <section className="mb-10">
 
             <div className="rounded-2xl border border-green-200 bg-green-50 p-6">
@@ -742,6 +883,7 @@ function Dashboard() {
                     </p>
 
                   </div>
+
                 </div>
 
                 <span className="font-semibold text-green-700">
@@ -749,11 +891,17 @@ function Dashboard() {
                 </span>
 
               </div>
+
             </div>
+
           </section>
+
         )}
 
-        {/* Quick Actions */}
+        {/* ====================================
+            QUICK ACTIONS
+        ==================================== */}
+
         <section className="mb-10">
 
           <h2 className="mb-5 text-2xl font-bold text-slate-900">
@@ -762,10 +910,13 @@ function Dashboard() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
+            {/* Browse Courses */}
+
             <Link
               to="/courses"
               className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
             >
+
               <BookOpen
                 className="mb-3 text-blue-600"
                 size={25}
@@ -783,12 +934,16 @@ function Dashboard() {
                 className="mt-4 text-slate-400 transition group-hover:translate-x-1"
                 size={18}
               />
+
             </Link>
+
+            {/* Profile */}
 
             <Link
               to="/profile"
               className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
             >
+
               <User
                 className="mb-3 text-indigo-600"
                 size={25}
@@ -806,7 +961,10 @@ function Dashboard() {
                 className="mt-4 text-slate-400 transition group-hover:translate-x-1"
                 size={18}
               />
+
             </Link>
+
+            {/* Lessons */}
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
@@ -825,6 +983,8 @@ function Dashboard() {
               </p>
 
             </div>
+
+            {/* Achievements */}
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
@@ -847,7 +1007,10 @@ function Dashboard() {
           </div>
         </section>
 
-        {/* Recent Activity */}
+        {/* ====================================
+            RECENT ACTIVITY
+        ==================================== */}
+
         <section>
 
           <h2 className="mb-5 text-2xl font-bold text-slate-900">
@@ -858,6 +1021,7 @@ function Dashboard() {
 
             {totalLessonsCompleted === 0 &&
             quizzesCompleted === 0 ? (
+
               <div className="py-8 text-center">
 
                 <BookOpen
@@ -882,7 +1046,9 @@ function Dashboard() {
                 </Link>
 
               </div>
+
             ) : (
+
               <div className="space-y-4">
 
                 {courseData
@@ -892,6 +1058,7 @@ function Dashboard() {
                       course.quizScore !== null
                   )
                   .map((course) => (
+
                     <div
                       key={course.id}
                       className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4"
@@ -910,14 +1077,17 @@ function Dashboard() {
                           </p>
 
                           <p className="mt-1 text-sm text-slate-500">
+
                             {course.completedLessons.length} lesson
                             {course.completedLessons.length !== 1
                               ? "s"
                               : ""}{" "}
                             completed
+
                           </p>
 
                         </div>
+
                       </div>
 
                       <Link
@@ -930,12 +1100,15 @@ function Dashboard() {
                       </Link>
 
                     </div>
+
                   ))}
 
               </div>
+
             )}
 
           </div>
+
         </section>
 
       </main>
