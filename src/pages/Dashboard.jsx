@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+
 import {
   BookOpen,
   CheckCircle2,
@@ -14,38 +15,58 @@ import {
 
 import courses from "../data/courses";
 
+const API_URL = "http://localhost:5000";
+
+// ======================================================
+// IMPORTANT
+// Every CodeNinja course now contains 14 learning topics.
+// ======================================================
+const TOTAL_TOPICS_PER_COURSE = 14;
+
 function Dashboard() {
-  // ==========================================
-  // LOAD LOGGED-IN USER
-  // ==========================================
+  // ======================================================
+  // GET CURRENT USER
+  // ======================================================
 
-  const storedUser = localStorage.getItem("codeninja-user");
+  const getCurrentUser = () => {
+    const storedUser =
+      localStorage.getItem("codeninja-user");
 
-  let user = {
+    if (!storedUser) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(storedUser);
+    } catch {
+      return null;
+    }
+  };
+
+  const currentUser = getCurrentUser();
+
+  const user = currentUser || {
     id: null,
     name: "Student",
     email: "student@example.com",
   };
 
-  if (storedUser) {
-    try {
-      user = JSON.parse(storedUser);
-    } catch {
-      console.log("Could not read user data.");
-    }
-  }
-
-  // ==========================================
+  // ======================================================
   // STATE
-  // ==========================================
+  // ======================================================
 
-  const [courseProgress, setCourseProgress] = useState({});
-  const [quizScores, setQuizScores] = useState({});
-  const [loadingProgress, setLoadingProgress] = useState(true);
+  const [courseProgress, setCourseProgress] =
+    useState({});
 
-  // ==========================================
-  // LOAD USER-SPECIFIC PROGRESS + QUIZ SCORES
-  // ==========================================
+  const [quizScores, setQuizScores] =
+    useState({});
+
+  const [loadingProgress, setLoadingProgress] =
+    useState(true);
+
+  // ======================================================
+  // LOAD USER PROGRESS + QUIZ DATA
+  // ======================================================
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -57,14 +78,14 @@ function Dashboard() {
       const progressData = {};
       const quizData = {};
 
-      // ======================================
-      // LOAD PROGRESS FOR EVERY COURSE
-      // ======================================
+      // ==================================================
+      // LOAD PROGRESS FOR ALL COURSES
+      // ==================================================
 
       for (const course of courses) {
         try {
           const response = await fetch(
-            `http://localhost:5000/api/progress/${user.id}/${course.id}`
+            `${API_URL}/api/progress/${user.id}/${course.id}`
           );
 
           const data = await response.json();
@@ -72,45 +93,59 @@ function Dashboard() {
           if (response.ok && data.success) {
             let completedLessons = [];
 
-            // Support backend snake_case
-            if (Array.isArray(data.progress?.completed_lessons)) {
-              completedLessons = data.progress.completed_lessons;
+            // Backend response:
+            // data.completedLessons
+            if (
+              Array.isArray(
+                data.completedLessons
+              )
+            ) {
+              completedLessons =
+                data.completedLessons;
             }
 
-            // Support camelCase
-            else if (Array.isArray(data.progress?.completedLessons)) {
-              completedLessons = data.progress.completedLessons;
+            // Backend response:
+            // data.progress.completed_lessons
+            else if (
+              Array.isArray(
+                data.progress?.completed_lessons
+              )
+            ) {
+              completedLessons =
+                data.progress.completed_lessons;
             }
 
-            // Support direct response
-            else if (Array.isArray(data.completedLessons)) {
-              completedLessons = data.completedLessons;
+            // Backend response:
+            // data.progress.completedLessons
+            else if (
+              Array.isArray(
+                data.progress?.completedLessons
+              )
+            ) {
+              completedLessons =
+                data.progress.completedLessons;
             }
 
-            progressData[course.id] = completedLessons;
+            // ==================================================
+            // REMOVE DUPLICATE TOPIC IDs
+            // ==================================================
 
-            // Save only for this user
+            completedLessons = [
+              ...new Set(completedLessons),
+            ];
+
+            progressData[course.id] =
+              completedLessons;
+
+            // Save current user's progress locally
             localStorage.setItem(
               `course-progress-${user.id}-${course.id}`,
-              JSON.stringify(completedLessons)
+              JSON.stringify(
+                completedLessons
+              )
             );
           } else {
-            // Fallback to localStorage
-            const savedProgress = localStorage.getItem(
-              `course-progress-${user.id}-${course.id}`
-            );
-
-            try {
-              const parsedProgress = savedProgress
-                ? JSON.parse(savedProgress)
-                : [];
-
-              progressData[course.id] = Array.isArray(parsedProgress)
-                ? parsedProgress
-                : [];
-            } catch {
-              progressData[course.id] = [];
-            }
+            progressData[course.id] = [];
           }
         } catch (error) {
           console.error(
@@ -118,49 +153,68 @@ function Dashboard() {
             error
           );
 
-          // Fallback to this user's localStorage
+          // ==================================================
+          // FALLBACK TO LOCAL STORAGE
+          // ==================================================
+
           try {
-            const savedProgress = localStorage.getItem(
-              `course-progress-${user.id}-${course.id}`
-            );
+            const savedProgress =
+              localStorage.getItem(
+                `course-progress-${user.id}-${course.id}`
+              );
 
-            const parsedProgress = savedProgress
-              ? JSON.parse(savedProgress)
-              : [];
+            const parsedProgress =
+              savedProgress
+                ? JSON.parse(savedProgress)
+                : [];
 
-            progressData[course.id] = Array.isArray(parsedProgress)
-              ? parsedProgress
-              : [];
+            progressData[course.id] =
+              Array.isArray(parsedProgress)
+                ? [
+                    ...new Set(
+                      parsedProgress
+                    ),
+                  ]
+                : [];
           } catch {
             progressData[course.id] = [];
           }
         }
       }
 
-      // ======================================
-      // LOAD QUIZ SCORES FOR THIS USER
-      // ======================================
+      // ==================================================
+      // LOAD QUIZ SCORES
+      // ==================================================
 
       for (const course of courses) {
         try {
           const response = await fetch(
-            `http://localhost:5000/api/quiz/${user.id}/${course.id}`
+            `${API_URL}/api/quiz/${user.id}/${course.id}`
           );
 
           const data = await response.json();
 
-          if (response.ok && data.success && data.result) {
+          if (
+            response.ok &&
+            data.success &&
+            data.result
+          ) {
             const result = data.result;
 
-            const score = Number(result.score || 0);
+            const score =
+              Number(result.score || 0);
 
             const total = Number(
-              result.total ?? result.total_questions ?? 0
+              result.total ??
+                result.total_questions ??
+                0
             );
 
             const percentage =
               total > 0
-                ? Math.round((score / total) * 100)
+                ? Math.round(
+                    (score / total) * 100
+                  )
                 : 0;
 
             const quizResult = {
@@ -169,28 +223,36 @@ function Dashboard() {
               percentage,
             };
 
-            quizData[course.id] = quizResult;
+            quizData[course.id] =
+              quizResult;
 
-            // Save only for this user
             localStorage.setItem(
               `quiz-score-${user.id}-${course.id}`,
-              JSON.stringify(quizResult)
+              JSON.stringify(
+                quizResult
+              )
             );
           } else {
-            // Fallback to this user's localStorage
-            const savedQuiz = localStorage.getItem(
-              `quiz-score-${user.id}-${course.id}`
-            );
+            // ==================================================
+            // FALLBACK TO LOCAL STORAGE
+            // ==================================================
+
+            const savedQuiz =
+              localStorage.getItem(
+                `quiz-score-${user.id}-${course.id}`
+              );
 
             if (savedQuiz) {
               try {
-                const parsedQuiz = JSON.parse(savedQuiz);
+                const parsedQuiz =
+                  JSON.parse(savedQuiz);
 
                 if (parsedQuiz) {
-                  quizData[course.id] = parsedQuiz;
+                  quizData[course.id] =
+                    parsedQuiz;
                 }
               } catch {
-                // Ignore invalid localStorage
+                // Ignore invalid quiz data
               }
             }
           }
@@ -200,24 +262,30 @@ function Dashboard() {
             error
           );
 
-          // Fallback to user-specific localStorage
           try {
-            const savedQuiz = localStorage.getItem(
-              `quiz-score-${user.id}-${course.id}`
-            );
+            const savedQuiz =
+              localStorage.getItem(
+                `quiz-score-${user.id}-${course.id}`
+              );
 
             if (savedQuiz) {
-              const parsedQuiz = JSON.parse(savedQuiz);
+              const parsedQuiz =
+                JSON.parse(savedQuiz);
 
               if (parsedQuiz) {
-                quizData[course.id] = parsedQuiz;
+                quizData[course.id] =
+                  parsedQuiz;
               }
             }
           } catch {
-            // Ignore invalid localStorage
+            // Ignore invalid LocalStorage data
           }
         }
       }
+
+      // ==================================================
+      // SAVE DATA INTO STATE
+      // ==================================================
 
       setCourseProgress(progressData);
       setQuizScores(quizData);
@@ -227,82 +295,124 @@ function Dashboard() {
     loadUserData();
   }, [user.id]);
 
-  // ==========================================
+  // ======================================================
   // PREPARE COURSE DATA
-  // ==========================================
+  // ======================================================
 
-  const courseData = courses.map((course) => {
-    const completedLessons =
-      courseProgress[course.id] || [];
+  const courseData = courses.map(
+    (course) => {
+      const completedLessons =
+        courseProgress[course.id] || [];
 
-    const quizScore =
-      quizScores[course.id] || null;
+      const quizScore =
+        quizScores[course.id] || null;
 
-    // IMPORTANT:
-    // Every course currently contains 10 lessons
-    // in LearnCourse.jsx.
-    const totalLessons = 10;
+      // ==================================================
+      // IMPORTANT:
+      // DO NOT USE course.curriculum.length
+      // because the old curriculum contains 10.
+      //
+      // Actual learning system = 14 topics.
+      // ==================================================
 
-    const progress =
-      totalLessons > 0
-        ? Math.min(
-            100,
-            Math.round(
-              (completedLessons.length / totalLessons) * 100
+      const totalLessons =
+        TOTAL_TOPICS_PER_COURSE;
+
+      const completedCount =
+        Math.min(
+          completedLessons.length,
+          totalLessons
+        );
+
+      const progress =
+        totalLessons > 0
+          ? Math.min(
+              100,
+              Math.round(
+                (completedCount /
+                  totalLessons) *
+                  100
+              )
             )
-          )
-        : 0;
+          : 0;
 
-    return {
-      ...course,
-      completedLessons,
-      totalLessons,
-      progress,
-      quizScore,
-    };
-  });
+      return {
+        ...course,
 
-  // ==========================================
+        // Clean progress array
+        completedLessons,
+
+        // Always 14
+        totalLessons,
+
+        // Completed count cannot exceed 14
+        completedCount,
+
+        progress,
+
+        quizScore,
+      };
+    }
+  );
+
+  // ======================================================
   // DASHBOARD STATISTICS
-  // ==========================================
+  // ======================================================
 
   const totalLessonsCompleted =
     courseData.reduce(
       (total, course) =>
-        total + course.completedLessons.length,
+        total + course.completedCount,
+      0
+    );
+
+  const totalPossibleLessons =
+    courseData.reduce(
+      (total, course) =>
+        total + course.totalLessons,
       0
     );
 
   const coursesStarted =
     courseData.filter(
       (course) =>
-        course.completedLessons.length > 0
+        course.completedCount > 0
     ).length;
 
   const completedCourses =
     courseData.filter(
-      (course) => course.progress === 100
+      (course) =>
+        course.completedCount >=
+        course.totalLessons
     ).length;
 
   const quizzesCompleted =
     courseData.filter(
-      (course) => course.quizScore !== null
+      (course) =>
+        course.quizScore !== null
     ).length;
 
+  // ======================================================
+  // OVERALL PROGRESS
+  //
+  // Example:
+  // 2 courses × 14 = 28 completed
+  // 8 courses × 14 = 112 total
+  // 28 / 112 × 100 = 25%
+  // ======================================================
+
   const overallProgress =
-    courseData.length > 0
+    totalPossibleLessons > 0
       ? Math.round(
-          courseData.reduce(
-            (total, course) =>
-              total + course.progress,
-            0
-          ) / courseData.length
+          (totalLessonsCompleted /
+            totalPossibleLessons) *
+            100
         )
       : 0;
 
-  // ==========================================
+  // ======================================================
   // CONTINUE LEARNING
-  // ==========================================
+  // ======================================================
 
   const continueCourse =
     courseData.find(
@@ -316,17 +426,13 @@ function Dashboard() {
     ) ||
     null;
 
-  // ==========================================
-  // USER INITIAL
-  // ==========================================
-
   const firstLetter = user.name
     ? user.name.charAt(0).toUpperCase()
     : "S";
 
-  // ==========================================
+  // ======================================================
   // LOADING
-  // ==========================================
+  // ======================================================
 
   if (loadingProgress) {
     return (
@@ -342,16 +448,16 @@ function Dashboard() {
     );
   }
 
-  // ==========================================
+  // ======================================================
   // PAGE
-  // ==========================================
+  // ======================================================
 
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* ======================================
+      {/* ==================================================
           HEADER
-      ====================================== */}
+      ================================================== */}
 
       <section className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white">
         <div className="mx-auto max-w-7xl px-6 py-12">
@@ -385,15 +491,15 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* ======================================
+      {/* ==================================================
           MAIN
-      ====================================== */}
+      ================================================== */}
 
       <main className="mx-auto max-w-7xl px-6 py-10">
 
-        {/* ====================================
+        {/* ==================================================
             USER CARD
-        ==================================== */}
+        ================================================== */}
 
         <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
@@ -404,6 +510,7 @@ function Dashboard() {
             </div>
 
             <div>
+
               <h2 className="text-xl font-bold text-slate-900">
                 {user.name}
               </h2>
@@ -415,14 +522,16 @@ function Dashboard() {
               <p className="mt-2 text-sm text-green-600">
                 ● Account Active
               </p>
+
             </div>
 
           </div>
+
         </div>
 
-        {/* ====================================
+        {/* ==================================================
             LEARNING OVERVIEW
-        ==================================== */}
+        ================================================== */}
 
         <section className="mb-10">
 
@@ -510,7 +619,7 @@ function Dashboard() {
 
             </div>
 
-            {/* Quizzes */}
+            {/* Quizzes Completed */}
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
@@ -539,9 +648,9 @@ function Dashboard() {
           </div>
         </section>
 
-        {/* ====================================
+        {/* ==================================================
             CONTINUE LEARNING
-        ==================================== */}
+        ================================================== */}
 
         <section className="mb-10">
 
@@ -558,19 +667,18 @@ function Dashboard() {
           </div>
 
           {continueCourse ? (
-
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
               <div className="grid md:grid-cols-3">
-
-                {/* Course Information */}
 
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white md:col-span-1">
 
                   <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-white/15">
 
                     {continueCourse.icon && (
-                      <continueCourse.icon size={28} />
+                      <continueCourse.icon
+                        size={28}
+                      />
                     )}
 
                   </div>
@@ -588,8 +696,6 @@ function Dashboard() {
                   </p>
 
                 </div>
-
-                {/* Progress */}
 
                 <div className="p-8 md:col-span-2">
 
@@ -613,8 +719,6 @@ function Dashboard() {
 
                   </div>
 
-                  {/* Progress Bar */}
-
                   <div className="mb-6 h-3 overflow-hidden rounded-full bg-slate-200">
 
                     <div
@@ -626,25 +730,25 @@ function Dashboard() {
 
                   </div>
 
-                  {/* Lesson Count */}
-
                   <div className="mb-6 flex flex-wrap gap-5 text-sm text-slate-500">
 
                     <span>
-                      {continueCourse.completedLessons.length} /{" "}
+                      {continueCourse.completedCount} /{" "}
                       {continueCourse.totalLessons} lessons completed
                     </span>
 
                     {continueCourse.quizScore && (
                       <span>
                         Quiz:{" "}
-                        {continueCourse.quizScore.percentage}%
+                        {
+                          continueCourse
+                            .quizScore
+                            .percentage
+                        }%
                       </span>
                     )}
 
                   </div>
-
-                  {/* Buttons */}
 
                   <div className="flex flex-wrap gap-3">
 
@@ -671,10 +775,9 @@ function Dashboard() {
                 </div>
 
               </div>
+
             </div>
-
           ) : (
-
             <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
 
               <Award
@@ -703,9 +806,9 @@ function Dashboard() {
 
         </section>
 
-        {/* ====================================
+        {/* ==================================================
             MY LEARNING
-        ==================================== */}
+        ================================================== */}
 
         <section className="mb-10">
 
@@ -724,7 +827,6 @@ function Dashboard() {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
 
             {courseData.map((course) => (
-
               <div
                 key={course.id}
                 className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
@@ -777,8 +879,6 @@ function Dashboard() {
 
                   </div>
 
-                  {/* Progress Bar */}
-
                   <div className="mb-5 h-2 overflow-hidden rounded-full bg-slate-200">
 
                     <div
@@ -790,32 +890,28 @@ function Dashboard() {
 
                   </div>
 
-                  {/* LESSON COUNT */}
-
                   <div className="mb-5 flex items-center justify-between text-sm text-slate-500">
 
                     <span>
-                      {course.completedLessons.length}/
+                      {course.completedCount}/
                       {course.totalLessons} lessons
                     </span>
 
                     {course.quizScore ? (
-
                       <span className="font-medium text-green-600">
-                        Quiz {course.quizScore.percentage}%
+                        Quiz{" "}
+                        {
+                          course.quizScore
+                            .percentage
+                        }%
                       </span>
-
                     ) : (
-
                       <span>
                         No quiz
                       </span>
-
                     )}
 
                   </div>
-
-                  {/* BUTTONS */}
 
                   <div className="flex gap-2">
 
@@ -846,18 +942,16 @@ function Dashboard() {
                 </div>
 
               </div>
-
             ))}
 
           </div>
         </section>
 
-        {/* ====================================
+        {/* ==================================================
             COMPLETED COURSES
-        ==================================== */}
+        ================================================== */}
 
         {completedCourses > 0 && (
-
           <section className="mb-10">
 
             <div className="rounded-2xl border border-green-200 bg-green-50 p-6">
@@ -879,7 +973,9 @@ function Dashboard() {
                     <p className="mt-1 text-sm text-green-700">
                       You have completed{" "}
                       {completedCourses} course
-                      {completedCourses > 1 ? "s" : ""}.
+                      {completedCourses > 1
+                        ? "s"
+                        : ""}.
                     </p>
 
                   </div>
@@ -895,12 +991,11 @@ function Dashboard() {
             </div>
 
           </section>
-
         )}
 
-        {/* ====================================
+        {/* ==================================================
             QUICK ACTIONS
-        ==================================== */}
+        ================================================== */}
 
         <section className="mb-10">
 
@@ -909,8 +1004,6 @@ function Dashboard() {
           </h2>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-            {/* Browse Courses */}
 
             <Link
               to="/courses"
@@ -937,8 +1030,6 @@ function Dashboard() {
 
             </Link>
 
-            {/* Profile */}
-
             <Link
               to="/profile"
               className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
@@ -964,8 +1055,6 @@ function Dashboard() {
 
             </Link>
 
-            {/* Lessons */}
-
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
               <CheckCircle2
@@ -984,8 +1073,6 @@ function Dashboard() {
 
             </div>
 
-            {/* Achievements */}
-
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
               <Trophy
@@ -999,17 +1086,21 @@ function Dashboard() {
 
               <p className="mt-1 text-sm text-slate-500">
                 {completedCourses} course
-                {completedCourses !== 1 ? "s" : ""} completed.
+                {completedCourses !== 1
+                  ? "s"
+                  : ""}{" "}
+                completed.
               </p>
 
             </div>
 
           </div>
+
         </section>
 
-        {/* ====================================
+        {/* ==================================================
             RECENT ACTIVITY
-        ==================================== */}
+        ================================================== */}
 
         <section>
 
@@ -1021,7 +1112,6 @@ function Dashboard() {
 
             {totalLessonsCompleted === 0 &&
             quizzesCompleted === 0 ? (
-
               <div className="py-8 text-center">
 
                 <BookOpen
@@ -1046,19 +1136,16 @@ function Dashboard() {
                 </Link>
 
               </div>
-
             ) : (
-
               <div className="space-y-4">
 
                 {courseData
                   .filter(
                     (course) =>
-                      course.completedLessons.length > 0 ||
+                      course.completedCount > 0 ||
                       course.quizScore !== null
                   )
                   .map((course) => (
-
                     <div
                       key={course.id}
                       className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 p-4"
@@ -1077,13 +1164,11 @@ function Dashboard() {
                           </p>
 
                           <p className="mt-1 text-sm text-slate-500">
-
-                            {course.completedLessons.length} lesson
-                            {course.completedLessons.length !== 1
+                            {course.completedCount} lesson
+                            {course.completedCount !== 1
                               ? "s"
                               : ""}{" "}
                             completed
-
                           </p>
 
                         </div>
@@ -1100,11 +1185,9 @@ function Dashboard() {
                       </Link>
 
                     </div>
-
                   ))}
 
               </div>
-
             )}
 
           </div>

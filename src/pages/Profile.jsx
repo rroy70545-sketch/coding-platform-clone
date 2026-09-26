@@ -18,6 +18,9 @@ import { Link } from "react-router-dom";
 
 const API_URL = "http://localhost:5000";
 
+// Every course now contains 14 topics
+const TOTAL_TOPICS_PER_COURSE = 14;
+
 function Profile() {
   // =====================================================
   // GET SAVED USER
@@ -89,85 +92,148 @@ function Profile() {
     useState(false);
 
   // =====================================================
-  // COURSE PROGRESS
+  // LEARNING STATISTICS
   // =====================================================
 
-  const getCourseProgress = (course) => {
-    const savedProgress = localStorage.getItem(
-      `course-progress-${course.id}`
-    );
+  const [courseStats, setCourseStats] =
+    useState([]);
 
-    if (!savedProgress) {
-      return [];
-    }
-
-    try {
-      const parsedProgress = JSON.parse(
-        savedProgress
-      );
-
-      return Array.isArray(parsedProgress)
-        ? parsedProgress
-        : [];
-    } catch {
-      return [];
-    }
-  };
+  const [loadingStats, setLoadingStats] =
+    useState(true);
 
   // =====================================================
-  // QUIZ SCORE
+  // LOAD COURSE PROGRESS FROM BACKEND
   // =====================================================
 
-  const getQuizScore = (course) => {
-    const savedScore = localStorage.getItem(
-      `quiz-score-${course.id}`
-    );
+  useEffect(() => {
+    const loadCourseProgress = async () => {
+      if (!userId) {
+        setLoadingStats(false);
+        return;
+      }
 
-    if (!savedScore) {
-      return null;
-    }
+      try {
+        const results = await Promise.all(
+          courses.map(async (course) => {
+            try {
+              const response = await fetch(
+                `${API_URL}/api/progress/${userId}/${course.id}`
+              );
 
-    try {
-      return JSON.parse(savedScore);
-    } catch {
-      return null;
-    }
-  };
+              if (!response.ok) {
+                return {
+                  completedLessons: 0,
+                  totalLessons: TOTAL_TOPICS_PER_COURSE,
+                  quizCompleted: false,
+                };
+              }
+
+              const data = await response.json();
+
+              const completedTopics =
+                Array.isArray(data.completedLessons)
+                  ? data.completedLessons
+                  : Array.isArray(data.completed_lessons)
+                  ? data.completed_lessons
+                  : [];
+
+              return {
+                completedLessons: Math.min(
+                  completedTopics.length,
+                  TOTAL_TOPICS_PER_COURSE
+                ),
+
+                totalLessons:
+                  TOTAL_TOPICS_PER_COURSE,
+
+                quizCompleted: false,
+              };
+            } catch {
+              return {
+                completedLessons: 0,
+                totalLessons: TOTAL_TOPICS_PER_COURSE,
+                quizCompleted: false,
+              };
+            }
+          })
+        );
+
+        // Load quiz information separately
+        const quizResponse = await fetch(
+          `${API_URL}/api/quiz/user/${userId}`
+        );
+
+        if (quizResponse.ok) {
+          const quizData =
+            await quizResponse.json();
+
+          const quizResults =
+            Array.isArray(quizData.quizzes)
+              ? quizData.quizzes
+              : Array.isArray(quizData.results)
+              ? quizData.results
+              : [];
+
+          const updatedResults =
+            results.map((courseStat, index) => {
+              const courseId =
+                courses[index]?.id;
+
+              const hasQuiz =
+                quizResults.some(
+                  (quiz) =>
+                    Number(
+                      quiz.course_id ??
+                        quiz.courseId
+                    ) === Number(courseId)
+                );
+
+              return {
+                ...courseStat,
+                quizCompleted: hasQuiz,
+              };
+            });
+
+          setCourseStats(updatedResults);
+        } else {
+          setCourseStats(results);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load course statistics:",
+          error
+        );
+
+        setCourseStats(
+          courses.map(() => ({
+            completedLessons: 0,
+            totalLessons:
+              TOTAL_TOPICS_PER_COURSE,
+            quizCompleted: false,
+          }))
+        );
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+
+    loadCourseProgress();
+  }, [userId]);
 
   // =====================================================
   // COURSE STATISTICS
   // =====================================================
 
-  const courseStats = courses.map((course) => {
-    const completedLessons =
-      getCourseProgress(course);
+  const totalLessons =
+    courses.length *
+    TOTAL_TOPICS_PER_COURSE;
 
-    const quizScore =
-      getQuizScore(course);
-
-    return {
-      completedLessons:
-        completedLessons.length,
-
-      totalLessons:
-        course.curriculum.length,
-
-      quizCompleted:
-        quizScore !== null,
-    };
-  });
-
-  const totalLessons = courseStats.reduce(
-    (total, course) =>
-      total + course.totalLessons,
-    0
-  );
-
-  const completedLessons = courseStats.reduce(
-    (total, course) =>
-      total + course.completedLessons,
-    0
-  );
+  const completedLessons =
+    courseStats.reduce(
+      (total, course) =>
+        total + course.completedLessons,
+      0
+    );
 
   const coursesStarted =
     courseStats.filter(
@@ -202,9 +268,7 @@ function Profile() {
 
       try {
         const response = await fetch(
-          API_URL +
-            "/api/users/" +
-            userId
+          `${API_URL}/api/users/${userId}`
         );
 
         const data =
@@ -283,9 +347,7 @@ function Profile() {
 
     try {
       const response = await fetch(
-        API_URL +
-          "/api/users/" +
-          userId,
+        `${API_URL}/api/users/${userId}`,
         {
           method: "PUT",
           headers: {
@@ -410,10 +472,7 @@ function Profile() {
 
     try {
       const response = await fetch(
-        API_URL +
-          "/api/users/" +
-          userId +
-          "/password",
+        `${API_URL}/api/users/${userId}/password`,
         {
           method: "PUT",
           headers: {
@@ -467,9 +526,7 @@ function Profile() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* =========================
-          PROFILE HEADER
-      ========================== */}
+      {/* PROFILE HEADER */}
 
       <section className="bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 text-white">
 
@@ -504,15 +561,11 @@ function Profile() {
 
       </section>
 
-      {/* =========================
-          MAIN CONTENT
-      ========================== */}
+      {/* MAIN CONTENT */}
 
       <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
 
-        {/* =========================
-            PROFILE CARD
-        ========================== */}
+        {/* PROFILE CARD */}
 
         <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
 
@@ -549,9 +602,7 @@ function Profile() {
 
           </div>
 
-          {/* =========================
-              EDIT PROFILE
-          ========================== */}
+          {/* EDIT PROFILE */}
 
           <div className="p-6 sm:p-8">
 
@@ -565,11 +616,8 @@ function Profile() {
 
             {profileMessage && (
               <div className="mt-6 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-
                 <CheckCircle2 size={18} />
-
                 {profileMessage}
-
               </div>
             )}
 
@@ -580,13 +628,9 @@ function Profile() {
             )}
 
             <form
-              onSubmit={
-                handleProfileSubmit
-              }
+              onSubmit={handleProfileSubmit}
               className="mt-6 space-y-5"
             >
-
-              {/* Full Name */}
 
               <div>
 
@@ -623,8 +667,6 @@ function Profile() {
 
               </div>
 
-              {/* Email */}
-
               <div>
 
                 <label
@@ -660,13 +702,9 @@ function Profile() {
 
               </div>
 
-              {/* Save */}
-
               <button
                 type="submit"
-                disabled={
-                  loadingProfile
-                }
+                disabled={loadingProfile}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
 
@@ -684,9 +722,7 @@ function Profile() {
 
         </section>
 
-        {/* =========================
-            CHANGE PASSWORD
-        ========================== */}
+        {/* CHANGE PASSWORD */}
 
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
 
@@ -712,11 +748,8 @@ function Profile() {
 
           {passwordMessage && (
             <div className="mt-6 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-
               <CheckCircle2 size={18} />
-
               {passwordMessage}
-
             </div>
           )}
 
@@ -727,13 +760,9 @@ function Profile() {
           )}
 
           <form
-            onSubmit={
-              handlePasswordSubmit
-            }
+            onSubmit={handlePasswordSubmit}
             className="mt-6 space-y-5"
           >
-
-            {/* Current Password */}
 
             <div>
 
@@ -754,9 +783,7 @@ function Profile() {
                 <input
                   id="current-password"
                   type="password"
-                  value={
-                    currentPassword
-                  }
+                  value={currentPassword}
                   onChange={(event) => {
                     setCurrentPassword(
                       event.target.value
@@ -771,8 +798,6 @@ function Profile() {
               </div>
 
             </div>
-
-            {/* New Password */}
 
             <div>
 
@@ -793,9 +818,7 @@ function Profile() {
                 <input
                   id="new-password"
                   type="password"
-                  value={
-                    newPassword
-                  }
+                  value={newPassword}
                   onChange={(event) => {
                     setNewPassword(
                       event.target.value
@@ -814,8 +837,6 @@ function Profile() {
               </p>
 
             </div>
-
-            {/* Confirm Password */}
 
             <div>
 
@@ -836,9 +857,7 @@ function Profile() {
                 <input
                   id="confirm-password"
                   type="password"
-                  value={
-                    confirmPassword
-                  }
+                  value={confirmPassword}
                   onChange={(event) => {
                     setConfirmPassword(
                       event.target.value
@@ -854,13 +873,9 @@ function Profile() {
 
             </div>
 
-            {/* Change Password */}
-
             <button
               type="submit"
-              disabled={
-                loadingPassword
-              }
+              disabled={loadingPassword}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
 
@@ -876,9 +891,7 @@ function Profile() {
 
         </section>
 
-        {/* =========================
-            LEARNING STATISTICS
-        ========================== */}
+        {/* LEARNING STATISTICS */}
 
         <section className="mt-6">
 
@@ -896,7 +909,7 @@ function Profile() {
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
 
-            {/* Overall Progress */}
+            {/* OVERALL PROGRESS */}
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
 
@@ -907,7 +920,9 @@ function Profile() {
               <div className="mt-5 flex items-end gap-1">
 
                 <span className="text-3xl font-black text-gray-900">
-                  {overallProgress}
+                  {loadingStats
+                    ? "..."
+                    : overallProgress}
                 </span>
 
                 <span className="mb-1 text-lg font-bold text-gray-400">
@@ -934,7 +949,7 @@ function Profile() {
 
             </div>
 
-            {/* Courses Started */}
+            {/* COURSES STARTED */}
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
 
@@ -943,7 +958,9 @@ function Profile() {
               </div>
 
               <div className="mt-5 text-3xl font-black text-gray-900">
-                {coursesStarted}
+                {loadingStats
+                  ? "..."
+                  : coursesStarted}
               </div>
 
               <h3 className="mt-1 font-bold text-gray-500">
@@ -952,7 +969,7 @@ function Profile() {
 
             </div>
 
-            {/* Lessons Completed */}
+            {/* LESSONS COMPLETED */}
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
 
@@ -961,16 +978,18 @@ function Profile() {
               </div>
 
               <div className="mt-5 text-3xl font-black text-gray-900">
-                {completedLessons}
+                {loadingStats
+                  ? "..."
+                  : completedLessons}
               </div>
 
               <h3 className="mt-1 font-bold text-gray-500">
-                Lessons Completed
+                Topics Completed
               </h3>
 
             </div>
 
-            {/* Quizzes Completed */}
+            {/* QUIZZES COMPLETED */}
 
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
 
@@ -979,7 +998,9 @@ function Profile() {
               </div>
 
               <div className="mt-5 text-3xl font-black text-gray-900">
-                {quizzesCompleted}
+                {loadingStats
+                  ? "..."
+                  : quizzesCompleted}
               </div>
 
               <h3 className="mt-1 font-bold text-gray-500">
@@ -992,9 +1013,7 @@ function Profile() {
 
         </section>
 
-        {/* =========================
-            ACCOUNT INFORMATION
-        ========================== */}
+        {/* ACCOUNT INFORMATION */}
 
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
 
@@ -1056,9 +1075,7 @@ function Profile() {
 
         </section>
 
-        {/* =========================
-            LEARNING PROFILE
-        ========================== */}
+        {/* LEARNING PROFILE */}
 
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
 
