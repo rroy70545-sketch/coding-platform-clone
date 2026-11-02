@@ -17,10 +17,6 @@ import courses from "../data/courses";
 
 const API_URL = "http://localhost:5000";
 
-// ======================================================
-// IMPORTANT
-// Every CodeNinja course now contains 14 learning topics.
-// ======================================================
 const TOTAL_TOPICS_PER_COURSE = 14;
 
 function Dashboard() {
@@ -93,31 +89,19 @@ function Dashboard() {
           if (response.ok && data.success) {
             let completedLessons = [];
 
-            // Backend response:
-            // data.completedLessons
             if (
-              Array.isArray(
-                data.completedLessons
-              )
+              Array.isArray(data.completedLessons)
             ) {
               completedLessons =
                 data.completedLessons;
-            }
-
-            // Backend response:
-            // data.progress.completed_lessons
-            else if (
+            } else if (
               Array.isArray(
                 data.progress?.completed_lessons
               )
             ) {
               completedLessons =
                 data.progress.completed_lessons;
-            }
-
-            // Backend response:
-            // data.progress.completedLessons
-            else if (
+            } else if (
               Array.isArray(
                 data.progress?.completedLessons
               )
@@ -126,9 +110,7 @@ function Dashboard() {
                 data.progress.completedLessons;
             }
 
-            // ==================================================
             // REMOVE DUPLICATE TOPIC IDs
-            // ==================================================
 
             completedLessons = [
               ...new Set(completedLessons),
@@ -137,12 +119,11 @@ function Dashboard() {
             progressData[course.id] =
               completedLessons;
 
-            // Save current user's progress locally
+            // SAVE CURRENT USER'S PROGRESS LOCALLY
+
             localStorage.setItem(
               `course-progress-${user.id}-${course.id}`,
-              JSON.stringify(
-                completedLessons
-              )
+              JSON.stringify(completedLessons)
             );
           } else {
             progressData[course.id] = [];
@@ -153,9 +134,7 @@ function Dashboard() {
             error
           );
 
-          // ==================================================
           // FALLBACK TO LOCAL STORAGE
-          // ==================================================
 
           try {
             const savedProgress =
@@ -170,11 +149,7 @@ function Dashboard() {
 
             progressData[course.id] =
               Array.isArray(parsedProgress)
-                ? [
-                    ...new Set(
-                      parsedProgress
-                    ),
-                  ]
+                ? [...new Set(parsedProgress)]
                 : [];
           } catch {
             progressData[course.id] = [];
@@ -228,14 +203,10 @@ function Dashboard() {
 
             localStorage.setItem(
               `quiz-score-${user.id}-${course.id}`,
-              JSON.stringify(
-                quizResult
-              )
+              JSON.stringify(quizResult)
             );
           } else {
-            // ==================================================
             // FALLBACK TO LOCAL STORAGE
-            // ==================================================
 
             const savedQuiz =
               localStorage.getItem(
@@ -307,14 +278,6 @@ function Dashboard() {
       const quizScore =
         quizScores[course.id] || null;
 
-      // ==================================================
-      // IMPORTANT:
-      // DO NOT USE course.curriculum.length
-      // because the old curriculum contains 10.
-      //
-      // Actual learning system = 14 topics.
-      // ==================================================
-
       const totalLessons =
         TOTAL_TOPICS_PER_COURSE;
 
@@ -338,18 +301,10 @@ function Dashboard() {
 
       return {
         ...course,
-
-        // Clean progress array
         completedLessons,
-
-        // Always 14
         totalLessons,
-
-        // Completed count cannot exceed 14
         completedCount,
-
         progress,
-
         quizScore,
       };
     }
@@ -394,11 +349,6 @@ function Dashboard() {
 
   // ======================================================
   // OVERALL PROGRESS
-  //
-  // Example:
-  // 2 courses × 14 = 28 completed
-  // 8 courses × 14 = 112 total
-  // 28 / 112 × 100 = 25%
   // ======================================================
 
   const overallProgress =
@@ -412,19 +362,15 @@ function Dashboard() {
 
   // ======================================================
   // CONTINUE LEARNING
+  // ONLY SHOW COURSES WITH COMPLETED LESSONS
   // ======================================================
 
   const continueCourse =
     courseData.find(
       (course) =>
-        course.progress > 0 &&
+        course.completedCount > 0 &&
         course.progress < 100
-    ) ||
-    courseData.find(
-      (course) =>
-        course.progress === 0
-    ) ||
-    null;
+    ) || null;
 
   const firstLetter = user.name
     ? user.name.charAt(0).toUpperCase()
@@ -455,9 +401,7 @@ function Dashboard() {
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* ==================================================
-          HEADER
-      ================================================== */}
+      {/* HEADER */}
 
       <section className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 text-white">
         <div className="mx-auto max-w-7xl px-6 py-12">
@@ -491,15 +435,11 @@ function Dashboard() {
         </div>
       </section>
 
-      {/* ==================================================
-          MAIN
-      ================================================== */}
+      {/* MAIN */}
 
       <main className="mx-auto max-w-7xl px-6 py-10">
 
-        {/* ==================================================
-            USER CARD
-        ================================================== */}
+        {/* USER CARD */}
 
         <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
@@ -529,9 +469,7 @@ function Dashboard() {
 
         </div>
 
-        {/* ==================================================
-            LEARNING OVERVIEW
-        ================================================== */}
+        {/* LEARNING OVERVIEW */}
 
         <section className="mb-10">
 
@@ -650,35 +588,36 @@ function Dashboard() {
 
         {/* ==================================================
             CONTINUE LEARNING
+            HIDDEN FOR NEW USERS
         ================================================== */}
 
-        <section className="mb-10">
+        {continueCourse && (
+          <section className="mb-10">
 
-          <div className="mb-5">
+            <div className="mb-5">
 
-            <h2 className="text-2xl font-bold text-slate-900">
-              Continue Learning
-            </h2>
+              <h2 className="text-2xl font-bold text-slate-900">
+                Continue Learning
+              </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Pick up where you left off.
-            </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Pick up where you left off.
+              </p>
 
-          </div>
+            </div>
 
-          {continueCourse ? (
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
               <div className="grid md:grid-cols-3">
+
+                {/* COURSE INFORMATION */}
 
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white md:col-span-1">
 
                   <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl bg-white/15">
 
                     {continueCourse.icon && (
-                      <continueCourse.icon
-                        size={28}
-                      />
+                      <continueCourse.icon size={28} />
                     )}
 
                   </div>
@@ -696,6 +635,8 @@ function Dashboard() {
                   </p>
 
                 </div>
+
+                {/* COURSE PROGRESS */}
 
                 <div className="p-8 md:col-span-2">
 
@@ -719,6 +660,8 @@ function Dashboard() {
 
                   </div>
 
+                  {/* PROGRESS BAR */}
+
                   <div className="mb-6 h-3 overflow-hidden rounded-full bg-slate-200">
 
                     <div
@@ -739,16 +682,13 @@ function Dashboard() {
 
                     {continueCourse.quizScore && (
                       <span>
-                        Quiz:{" "}
-                        {
-                          continueCourse
-                            .quizScore
-                            .percentage
-                        }%
+                        Quiz: {continueCourse.quizScore.percentage}%
                       </span>
                     )}
 
                   </div>
+
+                  {/* BUTTONS */}
 
                   <div className="flex flex-wrap gap-3">
 
@@ -777,38 +717,11 @@ function Dashboard() {
               </div>
 
             </div>
-          ) : (
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
 
-              <Award
-                className="mx-auto mb-4 text-green-500"
-                size={42}
-              />
+          </section>
+        )}
 
-              <h3 className="text-xl font-bold text-slate-900">
-                All available courses completed!
-              </h3>
-
-              <p className="mt-2 text-slate-500">
-                Explore more courses to continue learning.
-              </p>
-
-              <Link
-                to="/courses"
-                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
-              >
-                Browse Courses
-                <ArrowRight size={18} />
-              </Link>
-
-            </div>
-          )}
-
-        </section>
-
-        {/* ==================================================
-            MY LEARNING
-        ================================================== */}
+        {/* MY LEARNING */}
 
         <section className="mb-10">
 
@@ -832,7 +745,7 @@ function Dashboard() {
                 className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
               >
 
-                {/* Course Header */}
+                {/* COURSE HEADER */}
 
                 <div className="flex items-center gap-4 border-b border-slate-100 p-5">
 
@@ -863,7 +776,7 @@ function Dashboard() {
 
                 </div>
 
-                {/* Course Progress */}
+                {/* COURSE PROGRESS */}
 
                 <div className="p-5">
 
@@ -899,11 +812,7 @@ function Dashboard() {
 
                     {course.quizScore ? (
                       <span className="font-medium text-green-600">
-                        Quiz{" "}
-                        {
-                          course.quizScore
-                            .percentage
-                        }%
+                        Quiz {course.quizScore.percentage}%
                       </span>
                     ) : (
                       <span>
@@ -947,9 +856,7 @@ function Dashboard() {
           </div>
         </section>
 
-        {/* ==================================================
-            COMPLETED COURSES
-        ================================================== */}
+        {/* COMPLETED COURSES */}
 
         {completedCourses > 0 && (
           <section className="mb-10">
@@ -993,9 +900,7 @@ function Dashboard() {
           </section>
         )}
 
-        {/* ==================================================
-            QUICK ACTIONS
-        ================================================== */}
+        {/* QUICK ACTIONS */}
 
         <section className="mb-10">
 
@@ -1098,9 +1003,7 @@ function Dashboard() {
 
         </section>
 
-        {/* ==================================================
-            RECENT ACTIVITY
-        ================================================== */}
+        {/* RECENT ACTIVITY */}
 
         <section>
 
